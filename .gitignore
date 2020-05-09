@@ -1,3 +1,4 @@
+*.lock
 /.bundle/
 /.yardoc
 /_yardoc/
