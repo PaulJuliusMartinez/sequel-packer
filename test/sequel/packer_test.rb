@@ -145,4 +145,75 @@ class Sequel::PackerTest < Minitest::Test
     assert_equal paul.id, packed_user[:id_from_block]
     assert_equal paul.name, packed_user[:name_from_block]
   end
+
+  class BasicCommentPacker < Sequel::Packer
+    model Comment
+    field :id
+    field :content
+  end
+
+  class PostWithCommentsPacker < Sequel::Packer
+    model Post
+    field :id
+    field :title
+    field :comments, BasicCommentPacker
+  end
+
+  def test_it_packs_associations
+    user = User.create(name: 'Paul')
+    post1 = Post.create(title: 'Post 1', author: user)
+    post2 = Post.create(title: 'Post 2', author: user)
+    comment1 = Comment.create(post: post1, commenter: user, content: 'A')
+    comment2 = Comment.create(post: post1, commenter: user, content: 'B')
+    comment3 = Comment.create(post: post2, commenter: user, content: 'C')
+
+    packed_posts = PostWithCommentsPacker.new.pack(Post.order(:id))
+    post1_comments = [comment1, comment2]
+    packed_post1_comments = packed_posts[0][:comments]
+    assert_equal 2, packed_post1_comments.length
+    assert_equal(
+      post1_comments.map(&:id),
+      packed_post1_comments.map {|h| h[:id]}.sort,
+    )
+    assert_equal(
+      post1_comments.map(&:content),
+      packed_post1_comments.map {|h| h[:content]}.sort,
+    )
+
+    packed_post2_comments = packed_posts[1][:comments]
+    assert_equal 1, packed_post2_comments.length
+    assert_equal comment3.id, packed_post2_comments[0][:id]
+    assert_equal comment3.content, packed_post2_comments[0][:content]
+  end
+
+  class UserWithPostsWithCommentsPacker < Sequel::Packer
+    model User
+    field :id
+    field :name
+    field :posts, PostWithCommentsPacker
+  end
+
+  def test_it_packs_nested_associations
+    user = User.create(name: 'Paul')
+    post1 = Post.create(title: 'Post 1', author: user)
+    post2 = Post.create(title: 'Post 2', author: user)
+    comment1 = Comment.create(post: post1, commenter: user, content: 'A')
+    comment2 = Comment.create(post: post1, commenter: user, content: 'B')
+    comment3 = Comment.create(post: post2, commenter: user, content: 'C')
+
+    packed_users = UserWithPostsWithCommentsPacker.new.pack(User.dataset)
+    assert_equal 1, packed_users.length
+
+    packed_posts = packed_users[0][:posts]
+    assert_equal [post1.id, post2.id], packed_posts.map {|p| p[:id]}.sort
+
+    packed_post1 = packed_posts.find {|p| p[:id] == post1.id}
+    packed_post2 = packed_posts.find {|p| p[:id] == post2.id}
+
+    assert_equal(
+      [comment1.id, comment2.id],
+      packed_post1[:comments].map {|c| c[:id]}.sort,
+    )
+    assert_equal [comment3.id], packed_post2[:comments].map {|c| c[:id]}
+  end
 end

@@ -22,6 +22,15 @@ module Sequel
       @model = klass
     end
 
+    # field(:foo)
+    METHOD_FIELD = :method_field
+    # field(:foo, &block)
+    BLOCK_FIELD = :block_field
+    # field(:association, packer_class)
+    ASSOCIATION_FIELD = :association_field
+    # field(&block)
+    ARBITRARY_MODIFICATION_FIELD = :arbitrary_modification_field
+
     def self.field(field_name=nil, packer_class=nil, &block)
       fail ModelNotYetDeclaredError if !@model
 
@@ -52,6 +61,7 @@ module Sequel
 
         arity = block.arity
 
+        # When using Symbol.to_proc (field(:foo, &:calculate_foo)), the block has arity -1.
         if field_name && arity != 1 && arity != -1
           raise(
             FieldArgumentError,
@@ -105,7 +115,7 @@ module Sequel
             @model.association_reflections[field_name].associated_class
           packer_class_model = packer_class.instance_variable_get(:@model)
 
-          if !(association_model < packer_class_model)
+          if !(association_model <= packer_class_model)
             raise(
               FieldArgumentError,
               "Model for association packer (#{packer_class_model}) " +
@@ -125,33 +135,76 @@ module Sequel
         end
       end
 
+      field_type =
+        if block
+          if field_name
+            BLOCK_FIELD
+          else
+            ARBITRARY_MODIFICATION_FIELD
+          end
+        else
+          if packer_class
+            ASSOCIATION_FIELD
+          else
+            METHOD_FIELD
+          end
+        end
+
       @fields << {
+        type: field_type,
         name: field_name,
+        packer: packer_class,
         block: block,
       }
     end
 
-    def pack(dataset)
-      dataset.map do |model|
-        h = {}
+    def initialize
+      @packers = nil
 
-        fields.each do |field_options|
-          field_name = field_options[:name]
-          block = field_options[:block]
-
-          if block
-            if field_name
-              h[field_name] = block.call(model)
-            else
-              block.call(model, h)
-            end
-          else
-            h[field_name] = model.send(field_name)
-          end
+      fields.each do |field_options|
+        if field_options[:type] == ASSOCIATION_FIELD
+          @packers ||= {}
+          @packers[field_options[:name]] = field_options[:packer].new
         end
-
-        h
       end
+    end
+
+    def pack(dataset)
+      models = dataset.all
+      pack_models(models)
+    end
+
+    def pack_model(model)
+      h = {}
+
+      fields.each do |field_options|
+        field_name = field_options[:name]
+
+        case field_options[:type]
+        when METHOD_FIELD
+          h[field_name] = model.send(field_name)
+        when BLOCK_FIELD
+          h[field_name] = field_options[:block].call(model)
+        when ASSOCIATION_FIELD
+          associated_objects = model.send(field_name)
+
+          if !associated_objects
+            h[field_name] = nil
+          elsif associated_objects.is_a?(Array)
+            h[field_name] = @packers[field_name].pack_models(associated_objects)
+          else
+            @packers[field_name].pack_model(associated_objects)
+          end
+        when ARBITRARY_MODIFICATION_FIELD
+          field_options[:block].call(model, h)
+        end
+      end
+
+      h
+    end
+
+    def pack_models(models)
+      models.map {|m| pack_model(m)}
     end
 
     private
