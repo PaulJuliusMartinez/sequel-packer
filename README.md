@@ -156,8 +156,8 @@ class PostPacker < Sequel::Packer
   ...
 
   # Eww!
--  field :comments, CommentPacker
-+  field :comments, CommentWithAuthorPacker
+- field :comments, CommentPacker
++ field :comments, CommentWithAuthorPacker
 end
 ```
 
@@ -173,10 +173,9 @@ class CommentPacker < Sequel::Packer
   field :id
   field :content
 
-  # Added!
-  trait :author do
-    field :author, UserPacker
-  end
++ trait :author do
++   field :author, UserPacker
++ end
 end
 ```
 
@@ -214,8 +213,8 @@ class PostPacker < Sequel::Packer
   field :title
   field :content
 
--  field :comments, CommentPacker
-+  field :comments, CommentPacker, :author
+- field :comments, CommentPacker
++ field :comments, CommentPacker, :author
 end
 ```
 
@@ -290,7 +289,7 @@ class MyPacker < Sequel::Packer
 end
 ```
 
-### `self.field(association, packer_class, *traits)
+### `self.field(association, packer_class, *traits)`
 
 A Sequel association (defined in the model file using `one_to_many`, or
 `many_to_one`, etc.), can be packed using another Packer class, possibly with
