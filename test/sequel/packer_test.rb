@@ -10,12 +10,18 @@ class Sequel::PackerTest < Minitest::Test
     refute_nil ::Sequel::Packer::VERSION
   end
 
-  class DummyUserPacker < Sequel::Packer
+  ######################
+  # Some basic packers #
+  ######################
+
+  class UserIdPacker < Sequel::Packer
     model User
+    field :id
   end
 
-  class DummyPostPacker < Sequel::Packer
+  class PostIdPacker < Sequel::Packer
     model Post
+    field :id
   end
 
   ############################################
@@ -74,7 +80,7 @@ class Sequel::PackerTest < Minitest::Test
 
   def test_association_doesnt_exist
     err = assert_packer_declaration_raises(User) do
-      field :recent_posts, DummyPostPacker
+      field :recent_posts, PostIdPacker
     end
     assert_includes err.message, 'association recent_posts does not exist'
   end
@@ -88,14 +94,14 @@ class Sequel::PackerTest < Minitest::Test
 
   def test_association_packer_class_model_doesnt_match_association_model
     err = assert_packer_declaration_raises(User) do
-      field :posts, DummyUserPacker
+      field :posts, UserIdPacker
     end
     assert_includes err.message, "doesn't match model for the posts association"
   end
 
   def test_multiple_arguments_with_block
     err = assert_packer_declaration_raises(User) do
-      field(:posts, DummyPostPacker) {|_model|}
+      field(:posts, PostIdPacker) {|_model|}
     end
     assert_includes err.message, 'passing a block to Sequel::Packer::field'
   end
@@ -215,5 +221,43 @@ class Sequel::PackerTest < Minitest::Test
       packed_post1[:comments].map {|c| c[:id]}.sort,
     )
     assert_equal [comment3.id], packed_post2[:comments].map {|c| c[:id]}
+  end
+
+  class BasicTraitPacker < Sequel::Packer
+    model Post
+
+    field :id
+
+    trait :author do
+      field :author, UserIdPacker
+    end
+
+    trait :foobar do
+      field(:foo) {|_| 'bar'}
+    end
+  end
+
+  def test_basic_trait_usage
+    user = User.create(name: 'Paul')
+    Post.create(title: 'Post', author: user)
+
+    packed_post = BasicTraitPacker.new.pack(Post.dataset)[0]
+    refute packed_post.key?(:foobar)
+    refute packed_post.key?(:author)
+
+    packed_post_with_author =
+      BasicTraitPacker.new(:author).pack(Post.dataset)[0]
+    refute packed_post_with_author.key?(:foobar)
+    assert_equal({id: user.id}, packed_post_with_author[:author])
+
+    packed_post_with_foobar =
+      BasicTraitPacker.new(:foobar).pack(Post.dataset)[0]
+    refute packed_post_with_foobar.key?(:author)
+    assert_equal 'bar', packed_post_with_foobar[:foo]
+
+    packed_post_with_traits =
+      BasicTraitPacker.new(:author, :foobar).pack(Post.dataset)[0]
+    assert_equal({id: user.id}, packed_post_with_traits[:author])
+    assert_equal 'bar', packed_post_with_traits[:foo]
   end
 end

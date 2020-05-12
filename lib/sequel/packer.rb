@@ -7,6 +7,7 @@ module Sequel
 
     def self.inherited(subclass)
       subclass.instance_variable_set(:@fields, [])
+      subclass.instance_variable_set(:@traits, {})
     end
 
     def self.model(klass)
@@ -32,6 +33,42 @@ module Sequel
     ARBITRARY_MODIFICATION_FIELD = :arbitrary_modification_field
 
     def self.field(field_name=nil, packer_class=nil, &block)
+      validate_field_args(field_name, packer_class, &block)
+      field_type = determine_field_type(field_name, packer_class, &block)
+
+      @fields << {
+        type: field_type,
+        name: field_name,
+        packer: packer_class,
+        block: block,
+      }
+    end
+
+    private_class_method def self.determine_field_type(
+      field_name=nil,
+      packer_class=nil,
+      &block
+    )
+      if block
+        if field_name
+          BLOCK_FIELD
+        else
+          ARBITRARY_MODIFICATION_FIELD
+        end
+      else
+        if packer_class
+          ASSOCIATION_FIELD
+        else
+          METHOD_FIELD
+        end
+      end
+    end
+
+    private_class_method def self.validate_field_args(
+      field_name=nil,
+      packer_class=nil,
+      &block
+    )
       fail ModelNotYetDeclaredError if !@model
 
       # This check applies to all invocations:
@@ -134,34 +171,30 @@ module Sequel
           end
         end
       end
-
-      field_type =
-        if block
-          if field_name
-            BLOCK_FIELD
-          else
-            ARBITRARY_MODIFICATION_FIELD
-          end
-        else
-          if packer_class
-            ASSOCIATION_FIELD
-          else
-            METHOD_FIELD
-          end
-        end
-
-      @fields << {
-        type: field_type,
-        name: field_name,
-        packer: packer_class,
-        block: block,
-      }
     end
 
-    def initialize
-      @packers = nil
+    def self.trait(name, &block)
+      raise ArgumentError, "Trait #{name} already defined" if @traits.key?(name)
+      if !block_given?
+        raise ArgumentError, 'Must give a block when defining a trait'
+      end
+      @traits[name] = block
+    end
 
-      fields.each do |field_options|
+    def initialize(*traits)
+      @packers = nil
+      @fields = traits.any? ? packer_fields.dup : packer_fields
+
+      traits.each do |trait|
+        trait_block = trait_blocks[trait]
+        if !trait_block
+          raise ArgumentError, "Unknown trait for #{self.class}: #{trait}"
+        end
+
+        self.instance_exec(&trait_block)
+      end
+
+      @fields.each do |field_options|
         if field_options[:type] == ASSOCIATION_FIELD
           @packers ||= {}
           @packers[field_options[:name]] = field_options[:packer].new
@@ -177,7 +210,7 @@ module Sequel
     def pack_model(model)
       h = {}
 
-      fields.each do |field_options|
+      @fields.each do |field_options|
         field_name = field_options[:name]
 
         case field_options[:type]
@@ -193,7 +226,7 @@ module Sequel
           elsif associated_objects.is_a?(Array)
             h[field_name] = @packers[field_name].pack_models(associated_objects)
           else
-            @packers[field_name].pack_model(associated_objects)
+            h[field_name] = @packers[field_name].pack_model(associated_objects)
           end
         when ARBITRARY_MODIFICATION_FIELD
           field_options[:block].call(model, h)
@@ -209,10 +242,29 @@ module Sequel
 
     private
 
-    def fields
+    def field(field_name=nil, packer_class=nil, &block)
+      klass = self.class
+      klass.send(:validate_field_args, field_name, packer_class, &block)
+      field_type =
+        klass.send(:determine_field_type, field_name, packer_class, &block)
+
+      @fields << {
+        type: field_type,
+        name: field_name,
+        packer: packer_class,
+        block: block,
+      }
+    end
+
+    def packer_fields
       self.class.instance_variable_get(:@fields)
+    end
+
+    def trait_blocks
+      self.class.instance_variable_get(:@traits)
     end
   end
 end
 
 require "sequel/packer/version"
+
