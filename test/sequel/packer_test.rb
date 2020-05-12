@@ -36,8 +36,8 @@ class Sequel::PackerTest < Minitest::Test
     end
   end
 
-  def assert_packer_declaration_raises(model_klass, &block)
-    assert_raises(Sequel::Packer::FieldArgumentError) do
+  def assert_packer_declaration_raises(model_klass, err_class=nil, &block)
+    assert_raises(err_class || Sequel::Packer::FieldArgumentError) do
       klass = Class.new(Sequel::Packer)
       klass.send(:model, model_klass) if model_klass
       klass.class_eval(&block)
@@ -104,6 +104,38 @@ class Sequel::PackerTest < Minitest::Test
       field(:posts, PostIdPacker) {|_model|}
     end
     assert_includes err.message, 'passing a block to Sequel::Packer::field'
+  end
+
+  def test_association_field_trait_doesnt_exist
+    err = assert_packer_declaration_raises(User) do
+      field :posts, PostIdPacker, :fake_trait
+    end
+    assert_includes err.message, "Trait :fake_trait isn't defined"
+    assert_includes err.message, 'PostIdPacker'
+  end
+
+  def test_trait_doesnt_exist
+    err = assert_raises(ArgumentError) do
+      UserIdPacker.new(:fake_trait)
+    end
+    assert_includes err.message, 'Unknown trait'
+    assert_includes err.message, 'UserIdPacker'
+    assert_includes err.message, ':fake_trait'
+  end
+
+  def test_redefine_trait
+    err = assert_packer_declaration_raises(User, ArgumentError) do
+      trait(:my_trait) {}
+      trait(:my_trait) {}
+    end
+    assert_includes err.message, 'Trait :my_trait already defined'
+  end
+
+  def test_trait_no_block
+    err = assert_packer_declaration_raises(User, ArgumentError) do
+      trait(:no_block)
+    end
+    assert_includes err.message, 'Must give a block'
   end
 
   ######################################
@@ -259,5 +291,35 @@ class Sequel::PackerTest < Minitest::Test
       BasicTraitPacker.new(:author, :foobar).pack(Post.dataset)[0]
     assert_equal({id: user.id}, packed_post_with_traits[:author])
     assert_equal 'bar', packed_post_with_traits[:foo]
+  end
+
+  class CommentWithCommenterTraitPacker < Sequel::Packer
+    model Comment
+    field :id
+    trait :commenter do
+      field :commenter, UserIdPacker
+    end
+  end
+
+  class NestedTraitPacker < Sequel::Packer
+    model Post
+    field :id
+    trait :comments do
+      field :comments, CommentWithCommenterTraitPacker, :commenter
+    end
+  end
+
+  def test_nested_traits
+    user = User.create(name: 'Paul')
+    post = Post.create(title: 'Post', author: user)
+    comment1 = Comment.create(post: post, commenter: user, content: 'A')
+    comment2 = Comment.create(post: post, commenter: user, content: 'B')
+
+    packed_post = NestedTraitPacker.new(:comments).pack(Post.dataset)[0]
+    comments = packed_post[:comments]
+    assert_equal [comment1.id, comment2.id], comments.map {|h| h[:id]}.sort
+    comments.each do |comment|
+      assert_equal({id: user.id}, comment[:commenter])
+    end
   end
 end

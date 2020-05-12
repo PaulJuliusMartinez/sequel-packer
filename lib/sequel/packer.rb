@@ -32,14 +32,15 @@ module Sequel
     # field(&block)
     ARBITRARY_MODIFICATION_FIELD = :arbitrary_modification_field
 
-    def self.field(field_name=nil, packer_class=nil, &block)
-      validate_field_args(field_name, packer_class, &block)
+    def self.field(field_name=nil, packer_class=nil, *traits, &block)
+      validate_field_args(field_name, packer_class, *traits, &block)
       field_type = determine_field_type(field_name, packer_class, &block)
 
       @fields << {
         type: field_type,
         name: field_name,
         packer: packer_class,
+        packer_traits: traits,
         block: block,
       }
     end
@@ -67,6 +68,7 @@ module Sequel
     private_class_method def self.validate_field_args(
       field_name=nil,
       packer_class=nil,
+      *traits,
       &block
     )
       fail ModelNotYetDeclaredError if !@model
@@ -85,7 +87,7 @@ module Sequel
         #     field :foo {|model| ...}
         # or  field {|model, hash| ...}
         #
-        if packer_class
+        if packer_class || traits.any?
           raise(
             FieldArgumentError,
             'When passing a block to Sequel::Packer::field, either pass the ' +
@@ -127,7 +129,7 @@ module Sequel
           )
         end
 
-        if packer_class
+        if packer_class || traits.any?
           if !@model.associations.include?(field_name)
             raise(
               FieldArgumentError,
@@ -160,6 +162,17 @@ module Sequel
                 "(#{association_model})",
             )
           end
+
+          packer_class_traits = packer_class.instance_variable_get(:@traits)
+          traits.each do |trait|
+            if !packer_class_traits.key?(trait)
+              raise(
+                FieldArgumentError,
+                "Trait :#{trait} isn't defined for #{packer_class} used to " +
+                  "pack #{field_name} association.",
+              )
+            end
+          end
         else
           if @model.associations.include?(field_name)
             raise(
@@ -174,7 +187,7 @@ module Sequel
     end
 
     def self.trait(name, &block)
-      raise ArgumentError, "Trait #{name} already defined" if @traits.key?(name)
+      raise ArgumentError, "Trait :#{name} already defined" if @traits.key?(name)
       if !block_given?
         raise ArgumentError, 'Must give a block when defining a trait'
       end
@@ -188,7 +201,7 @@ module Sequel
       traits.each do |trait|
         trait_block = trait_blocks[trait]
         if !trait_block
-          raise ArgumentError, "Unknown trait for #{self.class}: #{trait}"
+          raise ArgumentError, "Unknown trait for #{self.class}: :#{trait}"
         end
 
         self.instance_exec(&trait_block)
@@ -197,7 +210,8 @@ module Sequel
       @fields.each do |field_options|
         if field_options[:type] == ASSOCIATION_FIELD
           @packers ||= {}
-          @packers[field_options[:name]] = field_options[:packer].new
+          @packers[field_options[:name]] =
+            field_options[:packer].new(*field_options[:packer_traits])
         end
       end
     end
@@ -242,9 +256,10 @@ module Sequel
 
     private
 
-    def field(field_name=nil, packer_class=nil, &block)
+    def field(field_name=nil, packer_class=nil, *traits, &block)
       klass = self.class
-      klass.send(:validate_field_args, field_name, packer_class, &block)
+      klass.send(
+        :validate_field_args, field_name, packer_class, *traits, &block)
       field_type =
         klass.send(:determine_field_type, field_name, packer_class, &block)
 
@@ -252,6 +267,7 @@ module Sequel
         type: field_type,
         name: field_name,
         packer: packer_class,
+        packer_traits: traits,
         block: block,
       }
     end
