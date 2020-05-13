@@ -274,10 +274,6 @@ module Sequel
 
     private
 
-    def eager_hash
-      @eager_hash
-    end
-
     def field(field_name=nil, packer_class=nil, *traits, &block)
       klass = self.class
       klass.send(
@@ -292,6 +288,17 @@ module Sequel
         packer_traits: traits,
         block: block,
       }
+    end
+
+    def eager_hash
+      @eager_hash
+    end
+
+    def eager(*associations)
+      @eager_hash = EagerHash.merge!(
+        @eager_hash,
+        EagerHash.normalize_eager_args(*associations),
+      )
     end
 
     def packer_fields

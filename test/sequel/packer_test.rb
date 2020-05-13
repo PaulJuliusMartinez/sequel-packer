@@ -458,4 +458,34 @@ class Sequel::PackerTest < Minitest::Test
     assert_equal 2, packed_user[:num_posts]
     assert_equal 1, packed_user[:num_even_comments]
   end
+
+  class EagerTraitPacker < Sequel::Packer
+    model User
+
+    trait :posts_id_eq_0_mod_2 do
+      eager(posts: (proc {|ds| ds.where(Sequel.lit('id % 2 = 0'))}))
+      field :posts, PostIdPacker
+    end
+
+    trait :posts_id_eq_0_mod_3 do
+      eager(posts: (proc {|ds| ds.where(Sequel.lit('id % 3 = 0'))}))
+      field :posts, PostIdPacker
+    end
+  end
+
+  def test_eager_in_traits
+    user = User.create(name: 'Paul')
+    6.times {Post.create(author: user)}
+
+    packed_users = EagerTraitPacker.new(:posts_id_eq_0_mod_2).pack(User.dataset)
+    assert_equal 3, packed_users[0][:posts].count
+
+    packed_users = EagerTraitPacker.new(:posts_id_eq_0_mod_3).pack(User.dataset)
+    assert_equal 2, packed_users[0][:posts].count
+
+    packed_users = EagerTraitPacker
+      .new(:posts_id_eq_0_mod_2, :posts_id_eq_0_mod_3)
+      .pack(User.dataset)
+    assert_equal 1, packed_users[0][:posts].count
+  end
 end
