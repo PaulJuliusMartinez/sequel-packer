@@ -357,12 +357,12 @@ class Sequel::PackerTest < Minitest::Test
     trait(:likes_with_liker) {field :likes, LikeTraitsPacker, :liker}
   end
 
-  def test_generate_eager_hash
-    assert_nil UserTraitsPacker.new.send(:generate_eager_hash)
+  def test_eager_hash
+    assert_nil UserTraitsPacker.new.send(:eager_hash)
 
     assert_equal(
       {posts: nil},
-      UserTraitsPacker.new(:posts).send(:generate_eager_hash),
+      UserTraitsPacker.new(:posts).send(:eager_hash),
     )
 
     assert_equal(
@@ -372,7 +372,7 @@ class Sequel::PackerTest < Minitest::Test
       },
       UserTraitsPacker
         .new(:posts_with_comments, :comments_with_likes_with_liker)
-        .send(:generate_eager_hash),
+        .send(:eager_hash),
     )
   end
 
@@ -383,6 +383,17 @@ class Sequel::PackerTest < Minitest::Test
       @count ||= 0
       @count += 1
     end
+
+    def error(_); end
+  end
+
+  def assert_n_queries(n)
+    query_counter = QueryCounter.new
+    DB.loggers << query_counter
+    yield
+    assert_equal n, query_counter.count
+  ensure
+    DB.loggers.pop
   end
 
   def test_eager_loading_occurs
@@ -398,21 +409,53 @@ class Sequel::PackerTest < Minitest::Test
     Like.create(liker: user2, post: post1, comment: comment1)
     Like.create(liker: user1, post: post2, comment: comment2)
 
-    query_counter = QueryCounter.new
-    DB.loggers << query_counter
-
-    UserTraitsPacker
-      .new(:posts_with_comments, :comments_with_likes_with_liker)
-      .pack(User.dataset)
-
     # users (1)
     # - posts (2)
     #   - comments (3)
     # - comments (4)
     #   - likes (5)
     #     - liker (6)
-    assert_equal 6, query_counter.count
-  ensure
-    DB.loggers = []
+    assert_n_queries(6) do
+      UserTraitsPacker
+        .new(:posts_with_comments, :comments_with_likes_with_liker)
+        .pack(User.dataset)
+    end
+  end
+
+  #################
+  # eager testing #
+  #################
+
+  class UserPostAndCommentCountPacker < Sequel::Packer
+    model User
+
+    field :id
+
+    eager :posts
+    field(:num_posts) {|user| user.posts.count}
+
+    eager(comments: (proc {|ds| ds.where(Sequel.lit('id % 2 = 0'))}))
+    field(:num_even_comments) {|user| user.comments.count}
+  end
+
+  def test_eager
+    user = User.create(name: 'Paul')
+    User.create(name: 'Julius')
+    post = Post.create(author: user)
+    Post.create(author: user)
+    Comment.create(commenter: user, post: post)
+    Comment.create(commenter: user, post: post)
+
+    packed_users = nil
+    # users (1)
+    # - posts (2)
+    # - comments (3)
+    assert_n_queries(3) do
+      packed_users = UserPostAndCommentCountPacker.new.pack(User.dataset)
+    end
+
+    packed_user = packed_users.find {|h| h[:id] == user.id}
+    assert_equal 2, packed_user[:num_posts]
+    assert_equal 1, packed_user[:num_even_comments]
   end
 end

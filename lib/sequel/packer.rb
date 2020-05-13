@@ -8,6 +8,7 @@ module Sequel
     def self.inherited(subclass)
       subclass.instance_variable_set(:@fields, [])
       subclass.instance_variable_set(:@traits, {})
+      subclass.instance_variable_set(:@eager_hash, nil)
     end
 
     def self.model(klass)
@@ -194,9 +195,17 @@ module Sequel
       @traits[name] = block
     end
 
+    def self.eager(*associations)
+      @eager_hash = EagerHash.merge!(
+        @eager_hash,
+        EagerHash.normalize_eager_args(*associations),
+      )
+    end
+
     def initialize(*traits)
       @packers = nil
       @fields = traits.any? ? packer_fields.dup : packer_fields
+      @eager_hash = traits.any? ? EagerHash.deep_dup(packer_eager_hash) : packer_eager_hash
 
       traits.each do |trait|
         trait_block = trait_blocks[trait]
@@ -209,17 +218,23 @@ module Sequel
 
       @fields.each do |field_options|
         if field_options[:type] == ASSOCIATION_FIELD
-          @packers ||= {}
-          @packers[field_options[:name]] =
+          association = field_options[:name]
+          association_packer =
             field_options[:packer].new(*field_options[:packer_traits])
+
+          @packers ||= {}
+          @packers[association] = association_packer
+
+          @eager_hash = EagerHash.merge!(
+            @eager_hash,
+            {association => association_packer.send(:eager_hash)},
+          )
         end
       end
     end
 
     def pack(dataset)
-      eager_hash = generate_eager_hash
-      dataset = dataset.eager(eager_hash) if eager_hash
-
+      dataset = dataset.eager(@eager_hash) if @eager_hash
       models = dataset.all
       pack_models(models)
     end
@@ -259,15 +274,8 @@ module Sequel
 
     private
 
-    def generate_eager_hash
-      return nil if !@packers
-      eager_hash = {}
-
-      @packers.each do |association, packer|
-        eager_hash[association] = packer.send(:generate_eager_hash)
-      end
-
-      eager_hash
+    def eager_hash
+      @eager_hash
     end
 
     def field(field_name=nil, packer_class=nil, *traits, &block)
@@ -290,11 +298,15 @@ module Sequel
       self.class.instance_variable_get(:@fields)
     end
 
+    def packer_eager_hash
+      self.class.instance_variable_get(:@eager_hash)
+    end
+
     def trait_blocks
       self.class.instance_variable_get(:@traits)
     end
   end
 end
 
+require 'sequel/packer/eager_hash'
 require "sequel/packer/version"
-
