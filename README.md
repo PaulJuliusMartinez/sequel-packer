@@ -317,6 +317,34 @@ field do |model, hash|
 end
 ```
 
+### `self.trait(trait_name, &block)`
+
+Define optional serialization behavior by defining additional fields within a
+`trait` block. Traits can be opted into when initializing a packer by passing
+the name of the trait as an argument:
+
+```ruby
+class MyPacker < Sequel::Packer
+  trait :my_trait do
+    field :my_optional_field
+  end
+end
+
+# packed objects don't have my_optional_field
+MyPacker.new.pack(dataset)
+# packed objects do have my_optional_field
+MyPacker.new(:my_trait).pack(dataset)
+```
+
+Traits can also be used when packing associations by passing the name of the
+traits after the packer class:
+
+```ruby
+class MyOtherPacker < Sequel::Packer
+  field :my_packers, MyPacker, :my_trait
+end
+```
+
 ### `initialize(*traits)`
 
 When creating an instance of a Packer class, pass in any traits desired to
