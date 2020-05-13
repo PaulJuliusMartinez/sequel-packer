@@ -217,6 +217,9 @@ module Sequel
     end
 
     def pack(dataset)
+      eager_hash = generate_eager_hash
+      dataset = dataset.eager(eager_hash) if eager_hash
+
       models = dataset.all
       pack_models(models)
     end
@@ -255,6 +258,17 @@ module Sequel
     end
 
     private
+
+    def generate_eager_hash
+      return nil if !@packers
+      eager_hash = {}
+
+      @packers.each do |association, packer|
+        eager_hash[association] = packer.send(:generate_eager_hash)
+      end
+
+      eager_hash
+    end
 
     def field(field_name=nil, packer_class=nil, *traits, &block)
       klass = self.class

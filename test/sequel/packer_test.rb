@@ -322,4 +322,97 @@ class Sequel::PackerTest < Minitest::Test
       assert_equal({id: user.id}, comment[:commenter])
     end
   end
+
+  #########################
+  # Eager loading testing #
+  #########################
+
+  class UserTraitsPacker < Sequel::Packer
+    model User
+    trait(:posts) {field :posts, PostTraitsPacker}
+    trait(:posts_with_comments) {field :posts, PostTraitsPacker, :comments}
+    trait(:comments) {field :comments, CommentTraitsPacker}
+    trait(:comments_with_likes_with_liker) do
+      field :comments, CommentTraitsPacker, :likes_with_liker
+    end
+  end
+
+  class PostTraitsPacker < Sequel::Packer
+    model Post
+    trait(:comments) {field :comments, CommentTraitsPacker}
+    trait(:comments_with_commenters) {
+      field :comments, CommentTraitsPacker, :commenter
+    }
+  end
+
+  class LikeTraitsPacker < Sequel::Packer
+    model Like
+    trait(:liker) {field :liker, UserTraitsPacker}
+  end
+
+  class CommentTraitsPacker < Sequel::Packer
+    model Comment
+    trait(:commenter) {field :commenter, CommentTraitsPacker}
+    trait(:likes) {field :likes, LikeTraitsPacker}
+    trait(:likes_with_liker) {field :likes, LikeTraitsPacker, :liker}
+  end
+
+  def test_generate_eager_hash
+    assert_nil UserTraitsPacker.new.send(:generate_eager_hash)
+
+    assert_equal(
+      {posts: nil},
+      UserTraitsPacker.new(:posts).send(:generate_eager_hash),
+    )
+
+    assert_equal(
+      {
+        posts: {comments: nil},
+        comments: {likes: {liker: nil}},
+      },
+      UserTraitsPacker
+        .new(:posts_with_comments, :comments_with_likes_with_liker)
+        .send(:generate_eager_hash),
+    )
+  end
+
+  class QueryCounter
+    attr_reader :count
+
+    def info(query)
+      @count ||= 0
+      @count += 1
+    end
+  end
+
+  def test_eager_loading_occurs
+    user1 = User.create(name: 'Paul')
+    user2 = User.create(name: 'Julius')
+    post1 = Post.create(author: user1)
+    post2 = Post.create(author: user1)
+    post3 = Post.create(author: user2)
+    comment1 = Comment.create(commenter: user1, post: post1)
+    comment2 = Comment.create(commenter: user2, post: post2)
+    Comment.create(commenter: user2, post: post3)
+    Like.create(liker: user1, post: post2)
+    Like.create(liker: user2, post: post1, comment: comment1)
+    Like.create(liker: user1, post: post2, comment: comment2)
+
+    query_counter = QueryCounter.new
+    DB.loggers << query_counter
+
+    UserTraitsPacker
+      .new(:posts_with_comments, :comments_with_likes_with_liker)
+      .pack(User.dataset)
+
+    # users (1)
+    # - posts (2)
+    #   - comments (3)
+    # - comments (4)
+    #   - likes (5)
+    #     - liker (6)
+    assert_equal 6, query_counter.count
+  ensure
+    DB.loggers = []
+  end
 end

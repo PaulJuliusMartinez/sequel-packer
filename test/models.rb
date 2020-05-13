@@ -37,6 +37,7 @@ class User < Sequel::Model(:users)
     right_key: :post_id,
     class: :Post,
   )
+  one_to_many :comments, key: :commenter_id, class: :Comment
 end
 
 class Post < Sequel::Model(:posts)
@@ -49,6 +50,7 @@ class Comment < Sequel::Model(:comments)
   many_to_one :commenter, key: :commenter_id, class: :User
   many_to_one :post, key: :post_id, class: :Post
   many_to_one :parent, key: :parent_id, class: :Comment
+  one_to_many :likes, key: :comment_id, class: :Like
 end
 
 class Like < Sequel::Model(:likes)
