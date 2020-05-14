@@ -1,3 +1,10 @@
+### 0.3.0 (2020-05-14)
+
+* Add `self.set_association_packer(association, packer_class, *traits)` and
+  `self.pack_association(association, models)` for more flexible packing of
+  associations.
+* Improve internal code quality.
+
 ### 0.2.0 (2020-05-13)
 
 * Add support for `Sequel::Packer.eager(*associations)`
