@@ -1,6 +1,22 @@
 # Sequel::Packer
 
-A Ruby serialization library to be used with the Sequel ORM.
+`Sequel::Packer` is a Ruby JSON serialization library to be used with the Sequel
+ORM offering the following features:
+
+* *Declarative:* Define the shape of your serialized data with a simple,
+  straightforward DSL.
+* *Flexible:* Certain contexts require different data. Packers provide an easy
+  way to opt-in to serializing certain data only when you need it. The library
+  also provides convenient escape hatches when you need to do something not
+  explicitly supported by the API.
+* *Reusable:* The Packer library naturally composes well with itself. Nested
+  data can be serialized in the same way no matter what endpoint it's fetched
+  from.
+* *Efficient:* When not using Sequel's [`TacticalEagerLoading`]
+  (https://sequel.jeremyevans.net/rdoc-plugins/classes/Sequel/Plugins/TacticalEagerLoading.html)
+  plugin, the Packer library will intelligently determine which associations
+  and nested associations it needs to eager load in order to avoid any N+1 query
+  issues.
 
 ## Installation
 
@@ -325,6 +341,7 @@ the name of the trait as an argument:
 
 ```ruby
 class MyPacker < Sequel::Packer
+  model MyObj
   trait :my_trait do
     field :my_optional_field
   end
@@ -341,9 +358,73 @@ traits after the packer class:
 
 ```ruby
 class MyOtherPacker < Sequel::Packer
+  model MyObj
   field :my_packers, MyPacker, :my_trait
 end
 ```
+
+### `self.eager(*associations)`
+
+When packing an association, a Packer will automatically ensure that association
+is eager loaded, but there may be cases when an association will be accessed
+that the Packer doesn't know about. In these cases you can tell the Packer to
+eager load that data by calling `eager(*associations)`, passing in arguments
+the exact same way you would to [`Sequel::Dataset.eager`](
+https://sequel.jeremyevans.net/rdoc/classes/Sequel/Model/Associations/DatasetMethods.html#method-i-eager).
+
+One case where this may be useful is for a "count" field, that just lists the
+number of associated objects, but doesn't actually return them:
+
+```ruby
+class UserPacker < Sequel::Packer
+  model User
+
+  field :id
+
+  eager(:posts)
+  field(:num_posts) do |user|
+    user.posts.counts
+  end
+end
+
+UserPacker.new.pack(User.dataset)
+=> [
+  {id: 123, num_posts: 7},
+  {id: 456, num_posts: 3},
+  ...
+]
+```
+
+This helps prevent N+1 query problems when not using Sequel's
+[`TacticalEagerLoading`]
+(https://sequel.jeremyevans.net/rdoc-plugins/classes/Sequel/Plugins/TacticalEagerLoading.html)
+plugin.
+
+Another use of `eager`, even when using `TacticalEagerLoading`, is to modify or
+limit which records gets fetched from the database by using an eager proc. For
+example, to only pack recent posts, published in the past month, we might do:
+
+```
+class UserPacker < Sequel::Packer
+  model User
+
+  field :id
+
+  trait :recent_posts do
+    eager posts: (proc {|ds| ds.where {created_at > Time.now - 1.month}})
+    field :posts, PostIdPacker
+  end
+end
+```
+
+Keep in mind that this limits the association that gets used by ALL fields, so
+if another field actually needs access to all the users posts, it might not make
+sense to use `eager`.
+
+Also, it's important to note that if `eager` is called multiple times, with
+multiple procs, each proc will get applied to the dataset, likely resulting in
+overly restrictive filtering.
+
 
 ### `initialize(*traits)`
 
