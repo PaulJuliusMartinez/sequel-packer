@@ -318,7 +318,8 @@ end
 ```
 
 Though this version of course would result in many more queries to the database,
-which are not required when using the shorthand form.
+which are not required when using the shorthand form, and also requires creating
+a new instance of `packer_class` for every packed model.
 
 ### `self.field(&block)`
 
@@ -424,6 +425,70 @@ sense to use `eager`.
 Also, it's important to note that if `eager` is called multiple times, with
 multiple procs, each proc will get applied to the dataset, likely resulting in
 overly restrictive filtering.
+
+### `self.set_association_packer(association, packer_class, *traits)`
+
+See `self.pack_association(association, models)` below.
+
+### `self.pack_association(association, models)`
+
+The simplest way to pack an association is to use
+`self.field(association, packer_class, *traits)`, but sometimes this doesn't do
+exactly what we want. We may want to pack the association under a different key
+than the name of the association. Or we may only want to pack some of the
+associated models (and it may be difficult or impossible to express which subset
+we want to pack using `eager`). Or perhaps we have a `one_to_many` association
+and instead of packing an array, we want to pack a single associated object
+under a key. The two methods, `set_association_packer` and `pack_association`
+are designed to handle these cases.
+
+First, we'll note that following are exactly equivalent:
+
+```ruby
+field :my_assoc, MyAssocPacker, :trait1, :trait2
+```
+
+and
+
+```ruby
+set_association_packer :my_assoc, MyAssocPacker, :trait1, :trait2
+field :my_assoc do |model|
+  pack_association(:my_assoc, model.my_assoc)
+end
+```
+
+`set_association_packer` tells the Packer class that we will want to pack models
+from a particular association using the designated Packer with the specified
+traits. Declaring this ahead of time allows the Packer to ensure that the
+association is eager loaded, as well as any nested associations used when using
+the designated Packer with the specified traits.
+
+`pack_association` can then be used in a `field` block to use that Packer after
+the data has been fetched and we are actually packing the data. The key things
+here are that we don't need to use the name of the association as the name of
+the field, and that we can choose which models get serialized. If
+`pack_association` is passed an array, it will return an array of packed models,
+but if it is passed a single model, it will return just that packed model.
+
+Examples:
+
+#### Use a different field name than the name of the association
+```ruby
+set_association_packer :ugly_internal_names, InternalPacker
+field :nice_external_names do |model|
+  pack_association(:ugly_internal_names, model.ugly_internal_names)
+end
+```
+
+#### Pack a single instance of a `one_to_many` association
+```ruby
+class PostPacker < Sequel::Packer
+  set_association_packer :comments, CommentPacker
+  field :top_comment do |model|
+    pack_association(:comments, model.comments.max_by(&:num_likes))
+  end
+end
+```
 
 
 ### `initialize(*traits)`
