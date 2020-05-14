@@ -8,6 +8,7 @@ module Sequel
     def self.inherited(subclass)
       subclass.instance_variable_set(:@class_fields, [])
       subclass.instance_variable_set(:@class_traits, {})
+      subclass.instance_variable_set(:@class_packers, {})
       subclass.instance_variable_set(:@class_eager_hash, nil)
     end
 
@@ -37,13 +38,19 @@ module Sequel
       validate_field_args(field_name, packer_class, *traits, &block)
       field_type = determine_field_type(field_name, packer_class, &block)
 
+      if field_type == ASSOCIATION_FIELD
+        @class_packers[field_name] = [packer_class, traits]
+      end
+
       @class_fields << {
         type: field_type,
         name: field_name,
-        packer: packer_class,
-        packer_traits: traits,
         block: block,
       }
+    end
+
+    def self.set_association_packer(association, packer_class, *traits)
+      @class_packers[association] = [packer_class, traits]
     end
 
     private_class_method def self.determine_field_type(
@@ -205,12 +212,22 @@ module Sequel
     end
 
     def initialize(*traits)
-      @instance_packers = nil
-      @instance_fields = traits.any? ? class_fields.dup : class_fields
-      @instance_eager_hash = traits.any? ?
-        EagerHash.deep_dup(class_eager_hash) :
-        class_eager_hash
+      @subpackers = nil
 
+      # If there aren't any traits, we can just re-use the class variables.
+      if traits.empty?
+        @instance_fields = class_fields
+        @instance_packers = class_packers
+        @instance_eager_hash = class_eager_hash
+      else
+        @instance_fields = class_fields.dup
+        @instance_packers = class_packers.dup
+        @instance_eager_hash = EagerHash.deep_dup(class_eager_hash)
+      end
+
+      # Evaluate trait blocks, which might add new fields to @instance_fields,
+      # new packers to @instance_packers, and/or new associations to
+      # @instance_eager_hash.
       traits.each do |trait|
         trait_block = class_traits[trait]
         if !trait_block
@@ -220,20 +237,17 @@ module Sequel
         self.instance_exec(&trait_block)
       end
 
-      @instance_fields.each do |field_options|
-        if field_options[:type] == ASSOCIATION_FIELD
-          association = field_options[:name]
-          association_packer =
-            field_options[:packer].new(*field_options[:packer_traits])
+      # Create all the subpackers, and merge in their eager hashes.
+      @instance_packers.each do |association, (packer_class, traits)|
+        association_packer = packer_class.new(*traits)
 
-          @instance_packers ||= {}
-          @instance_packers[association] = association_packer
+        @subpackers ||= {}
+        @subpackers[association] = association_packer
 
-          @instance_eager_hash = EagerHash.merge!(
-            @instance_eager_hash,
-            {association => association_packer.send(:eager_hash)},
-          )
-        end
+        @instance_eager_hash = EagerHash.merge!(
+          @instance_eager_hash,
+          {association => association_packer.send(:eager_hash)},
+        )
       end
     end
 
@@ -253,21 +267,12 @@ module Sequel
         when METHOD_FIELD
           h[field_name] = model.send(field_name)
         when BLOCK_FIELD
-          h[field_name] = field_options[:block].call(model)
+          h[field_name] = instance_exec(model, &field_options[:block])
         when ASSOCIATION_FIELD
           associated_objects = model.send(field_name)
-
-          if !associated_objects
-            h[field_name] = nil
-          elsif associated_objects.is_a?(Array)
-            h[field_name] =
-              @instance_packers[field_name].pack_models(associated_objects)
-          else
-            h[field_name] =
-              @instance_packers[field_name].pack_model(associated_objects)
-          end
+          h[field_name] = pack_association(field_name, associated_objects)
         when ARBITRARY_MODIFICATION_FIELD
-          field_options[:block].call(model, h)
+          instance_exec(model, h, &field_options[:block])
         end
       end
 
@@ -276,6 +281,18 @@ module Sequel
 
     def pack_models(models)
       models.map {|m| pack_model(m)}
+    end
+
+    def pack_association(association, associated_models)
+      return nil if !associated_models
+
+      packer = @subpackers[association]
+
+      if associated_models.is_a?(Array)
+        packer.pack_models(associated_models)
+      else
+        packer.pack_model(associated_models)
+      end
     end
 
     private
@@ -287,13 +304,19 @@ module Sequel
       field_type =
         klass.send(:determine_field_type, field_name, packer_class, &block)
 
+      if field_type == ASSOCIATION_FIELD
+        @instance_packers[field_name] = [packer_class, traits]
+      end
+
       @instance_fields << {
         type: field_type,
         name: field_name,
-        packer: packer_class,
-        packer_traits: traits,
         block: block,
       }
+    end
+
+    def set_association_packer(association, packer_class, *traits)
+      @instance_packers[association] = [packer_class, traits]
     end
 
     def eager_hash
@@ -313,6 +336,10 @@ module Sequel
 
     def class_eager_hash
       self.class.instance_variable_get(:@class_eager_hash)
+    end
+
+    def class_packers
+      self.class.instance_variable_get(:@class_packers)
     end
 
     def class_traits

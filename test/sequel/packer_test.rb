@@ -24,6 +24,11 @@ class Sequel::PackerTest < Minitest::Test
     field :id
   end
 
+  class CommentIdPacker < Sequel::Packer
+    model Comment
+    field :id
+  end
+
   ############################################
   # Validation of arguments passed to field. #
   ############################################
@@ -487,5 +492,57 @@ class Sequel::PackerTest < Minitest::Test
       .new(:posts_id_eq_0_mod_2, :posts_id_eq_0_mod_3)
       .pack(User.dataset)
     assert_equal 1, packed_users[0][:posts].count
+  end
+
+  ###################################################
+  # set_association_packer/pack_association testing #
+  ###################################################
+
+  class SetAssociationPacker < Sequel::Packer
+    model User
+
+    field :id
+
+    set_association_packer :posts, PostIdPacker
+    field :most_recent_post do |user|
+      pack_association(:posts, user.posts.max_by(&:id))
+    end
+
+    trait :even_comments do
+      set_association_packer :comments, CommentIdPacker
+      field :even_comments do |user|
+        pack_association(
+          :comments,
+          user.comments.select {|c| c.id % 2 == 0},
+        )
+      end
+    end
+  end
+
+  def test_set_association_packer_and_pack_association
+    user = User.create(name: 'Paul')
+
+    packed_user = SetAssociationPacker.new(:even_comments).pack(User.dataset)[0]
+    assert_nil packed_user[:most_recent_post]
+    assert_empty packed_user[:even_comments]
+
+    Post.create(author: user)
+    recent_post = Post.create(author: user)
+
+    comment1 = Comment.create(commenter: user, post: recent_post)
+    comment2 = Comment.create(commenter: user, post: recent_post)
+    even_comment = [comment1, comment2].find {|c| c.id % 2 == 0}
+
+    # Create some other users.
+    3.times {|n| User.create(name: "User #{n}")}
+
+    assert_n_queries(3) do
+      packed_user = SetAssociationPacker
+        .new(:even_comments)
+        .pack(User.dataset.order(:id))[0]
+    end
+
+    assert_equal recent_post.id, packed_user[:most_recent_post][:id]
+    assert_equal [{id: even_comment.id}], packed_user[:even_comments]
   end
 end
