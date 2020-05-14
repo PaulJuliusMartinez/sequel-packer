@@ -6,9 +6,9 @@ module Sequel
     class ModelNotYetDeclaredError < StandardError; end
 
     def self.inherited(subclass)
-      subclass.instance_variable_set(:@fields, [])
-      subclass.instance_variable_set(:@traits, {})
-      subclass.instance_variable_set(:@eager_hash, nil)
+      subclass.instance_variable_set(:@class_fields, [])
+      subclass.instance_variable_set(:@class_traits, {})
+      subclass.instance_variable_set(:@class_eager_hash, nil)
     end
 
     def self.model(klass)
@@ -37,7 +37,7 @@ module Sequel
       validate_field_args(field_name, packer_class, *traits, &block)
       field_type = determine_field_type(field_name, packer_class, &block)
 
-      @fields << {
+      @class_fields << {
         type: field_type,
         name: field_name,
         packer: packer_class,
@@ -164,7 +164,7 @@ module Sequel
             )
           end
 
-          packer_class_traits = packer_class.instance_variable_get(:@traits)
+          packer_class_traits = packer_class.instance_variable_get(:@class_traits)
           traits.each do |trait|
             if !packer_class_traits.key?(trait)
               raise(
@@ -188,27 +188,31 @@ module Sequel
     end
 
     def self.trait(name, &block)
-      raise ArgumentError, "Trait :#{name} already defined" if @traits.key?(name)
+      if @class_traits.key?(name)
+        raise ArgumentError, "Trait :#{name} already defined"
+      end
       if !block_given?
         raise ArgumentError, 'Must give a block when defining a trait'
       end
-      @traits[name] = block
+      @class_traits[name] = block
     end
 
     def self.eager(*associations)
-      @eager_hash = EagerHash.merge!(
-        @eager_hash,
+      @class_eager_hash = EagerHash.merge!(
+        @class_eager_hash,
         EagerHash.normalize_eager_args(*associations),
       )
     end
 
     def initialize(*traits)
-      @packers = nil
-      @fields = traits.any? ? packer_fields.dup : packer_fields
-      @eager_hash = traits.any? ? EagerHash.deep_dup(packer_eager_hash) : packer_eager_hash
+      @instance_packers = nil
+      @instance_fields = traits.any? ? class_fields.dup : class_fields
+      @instance_eager_hash = traits.any? ?
+        EagerHash.deep_dup(class_eager_hash) :
+        class_eager_hash
 
       traits.each do |trait|
-        trait_block = trait_blocks[trait]
+        trait_block = class_traits[trait]
         if !trait_block
           raise ArgumentError, "Unknown trait for #{self.class}: :#{trait}"
         end
@@ -216,17 +220,17 @@ module Sequel
         self.instance_exec(&trait_block)
       end
 
-      @fields.each do |field_options|
+      @instance_fields.each do |field_options|
         if field_options[:type] == ASSOCIATION_FIELD
           association = field_options[:name]
           association_packer =
             field_options[:packer].new(*field_options[:packer_traits])
 
-          @packers ||= {}
-          @packers[association] = association_packer
+          @instance_packers ||= {}
+          @instance_packers[association] = association_packer
 
-          @eager_hash = EagerHash.merge!(
-            @eager_hash,
+          @instance_eager_hash = EagerHash.merge!(
+            @instance_eager_hash,
             {association => association_packer.send(:eager_hash)},
           )
         end
@@ -234,7 +238,7 @@ module Sequel
     end
 
     def pack(dataset)
-      dataset = dataset.eager(@eager_hash) if @eager_hash
+      dataset = dataset.eager(@instance_eager_hash) if @instance_eager_hash
       models = dataset.all
       pack_models(models)
     end
@@ -242,7 +246,7 @@ module Sequel
     def pack_model(model)
       h = {}
 
-      @fields.each do |field_options|
+      @instance_fields.each do |field_options|
         field_name = field_options[:name]
 
         case field_options[:type]
@@ -256,9 +260,11 @@ module Sequel
           if !associated_objects
             h[field_name] = nil
           elsif associated_objects.is_a?(Array)
-            h[field_name] = @packers[field_name].pack_models(associated_objects)
+            h[field_name] =
+              @instance_packers[field_name].pack_models(associated_objects)
           else
-            h[field_name] = @packers[field_name].pack_model(associated_objects)
+            h[field_name] =
+              @instance_packers[field_name].pack_model(associated_objects)
           end
         when ARBITRARY_MODIFICATION_FIELD
           field_options[:block].call(model, h)
@@ -281,7 +287,7 @@ module Sequel
       field_type =
         klass.send(:determine_field_type, field_name, packer_class, &block)
 
-      @fields << {
+      @instance_fields << {
         type: field_type,
         name: field_name,
         packer: packer_class,
@@ -291,26 +297,26 @@ module Sequel
     end
 
     def eager_hash
-      @eager_hash
+      @instance_eager_hash
     end
 
     def eager(*associations)
-      @eager_hash = EagerHash.merge!(
-        @eager_hash,
+      @instance_eager_hash = EagerHash.merge!(
+        @instance_eager_hash,
         EagerHash.normalize_eager_args(*associations),
       )
     end
 
-    def packer_fields
-      self.class.instance_variable_get(:@fields)
+    def class_fields
+      self.class.instance_variable_get(:@class_fields)
     end
 
-    def packer_eager_hash
-      self.class.instance_variable_get(:@eager_hash)
+    def class_eager_hash
+      self.class.instance_variable_get(:@class_eager_hash)
     end
 
-    def trait_blocks
-      self.class.instance_variable_get(:@traits)
+    def class_traits
+      self.class.instance_variable_get(:@class_traits)
     end
   end
 end
