@@ -1,3 +1,9 @@
+### 0.2.0 (2020-05-13)
+
+* Add support for `Sequel::Packer.eager(*associations)`
+* Use `Sequel::Dataset.eager` in the background when fetching a dataset to avoid
+  N+1 query issues.
+
 ### 0.1.0 (2020-05-11)
 
 * Add traits.
