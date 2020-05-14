@@ -12,8 +12,8 @@ ORM offering the following features:
 * *Reusable:* The Packer library naturally composes well with itself. Nested
   data can be serialized in the same way no matter what endpoint it's fetched
   from.
-* *Efficient:* When not using Sequel's [`TacticalEagerLoading`]
-  (https://sequel.jeremyevans.net/rdoc-plugins/classes/Sequel/Plugins/TacticalEagerLoading.html)
+* *Efficient:* When not using Sequel's
+  [`TacticalEagerLoading`](https://sequel.jeremyevans.net/rdoc-plugins/classes/Sequel/Plugins/TacticalEagerLoading.html)
   plugin, the Packer library will intelligently determine which associations
   and nested associations it needs to eager load in order to avoid any N+1 query
   issues.
@@ -58,8 +58,12 @@ DB.create_table(:comments) do
   String :content
 end
 
-class User < Sequel::Model(:users); end
-class Post < Sequel::Model(:posts); end
+class User < Sequel::Model(:users)
+  one_to_many :posts, key: :author_id, class: :Post
+end
+class Post < Sequel::Model(:posts)
+  one_to_many :comments, key: :post_id, class: :Comment
+end
 class Comment < Sequel::Model(:comments)
   many_to_one :author, key: :author_id, class: :User
 end
@@ -384,7 +388,7 @@ class UserPacker < Sequel::Packer
 
   eager(:posts)
   field(:num_posts) do |user|
-    user.posts.counts
+    user.posts.count
   end
 end
 
@@ -397,8 +401,7 @@ UserPacker.new.pack(User.dataset)
 ```
 
 This helps prevent N+1 query problems when not using Sequel's
-[`TacticalEagerLoading`]
-(https://sequel.jeremyevans.net/rdoc-plugins/classes/Sequel/Plugins/TacticalEagerLoading.html)
+[`TacticalEagerLoading`](https://sequel.jeremyevans.net/rdoc-plugins/classes/Sequel/Plugins/TacticalEagerLoading.html)
 plugin.
 
 Another use of `eager`, even when using `TacticalEagerLoading`, is to modify or
