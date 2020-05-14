@@ -33,6 +33,10 @@ class Sequel::PackerTest < Minitest::Test
   # Validation of arguments passed to field. #
   ############################################
 
+  AssociationDoesNotExist = Sequel::Packer::AssociationDoesNotExistError
+  InvalidAssociation = Sequel::Packer::InvalidAssociationPackerError
+  UnknownTrait = Sequel::Packer::UnknownTraitError
+
   def test_raises_if_model_not_yet_declared
     assert_raises(Sequel::Packer::ModelNotYetDeclaredError) do
       Class.new(Sequel::Packer) do
@@ -77,28 +81,28 @@ class Sequel::PackerTest < Minitest::Test
   end
 
   def test_association_field_doesnt_specify_packer
-    err = assert_packer_declaration_raises(User) do
+    err = assert_packer_declaration_raises(User, InvalidAssociation) do
       field :posts
     end
     assert_includes err.message, 'must also pass a Sequel::Packer class'
   end
 
   def test_association_doesnt_exist
-    err = assert_packer_declaration_raises(User) do
+    err = assert_packer_declaration_raises(User, AssociationDoesNotExist) do
       field :recent_posts, PostIdPacker
     end
-    assert_includes err.message, 'association recent_posts does not exist'
+    assert_includes err.message, 'association :recent_posts does not exist'
   end
 
   def test_association_packer_class_isnt_a_packer
-    err = assert_packer_declaration_raises(User) do
+    err = assert_packer_declaration_raises(User, InvalidAssociation) do
       field :posts, String
     end
     assert_includes err.message, 'is not a subclass of Sequel::Packer'
   end
 
   def test_association_packer_class_model_doesnt_match_association_model
-    err = assert_packer_declaration_raises(User) do
+    err = assert_packer_declaration_raises(User, InvalidAssociation) do
       field :posts, UserIdPacker
     end
     assert_includes err.message, "doesn't match model for the posts association"
@@ -112,7 +116,7 @@ class Sequel::PackerTest < Minitest::Test
   end
 
   def test_association_field_trait_doesnt_exist
-    err = assert_packer_declaration_raises(User) do
+    err = assert_packer_declaration_raises(User, UnknownTrait) do
       field :posts, PostIdPacker, :fake_trait
     end
     assert_includes err.message, "Trait :fake_trait isn't defined"
@@ -120,7 +124,7 @@ class Sequel::PackerTest < Minitest::Test
   end
 
   def test_trait_doesnt_exist
-    err = assert_raises(ArgumentError) do
+    err = assert_raises(ArgumentError, UnknownTrait) do
       UserIdPacker.new(:fake_trait)
     end
     assert_includes err.message, 'Unknown trait'

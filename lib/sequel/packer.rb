@@ -4,6 +4,9 @@ module Sequel
     class FieldArgumentError < ArgumentError; end
     # Must declare a model with `model MyModel` before calling field.
     class ModelNotYetDeclaredError < StandardError; end
+    class AssociationDoesNotExistError < StandardError; end
+    class InvalidAssociationPackerError < StandardError; end
+    class UnknownTraitError < StandardError; end
 
     def self.inherited(subclass)
       subclass.instance_variable_set(:@class_fields, [])
@@ -35,11 +38,12 @@ module Sequel
     ARBITRARY_MODIFICATION_FIELD = :arbitrary_modification_field
 
     def self.field(field_name=nil, packer_class=nil, *traits, &block)
-      validate_field_args(field_name, packer_class, *traits, &block)
-      field_type = determine_field_type(field_name, packer_class, &block)
+      Validation.check_field_arguments(
+        @model, field_name, packer_class, traits, &block)
+      field_type = determine_field_type(field_name, packer_class, block)
 
       if field_type == ASSOCIATION_FIELD
-        @class_packers[field_name] = [packer_class, traits]
+        set_association_packer(field_name, packer_class, *traits)
       end
 
       @class_fields << {
@@ -50,13 +54,15 @@ module Sequel
     end
 
     def self.set_association_packer(association, packer_class, *traits)
+      Validation.check_association_packer(
+        @model, association, packer_class, traits)
       @class_packers[association] = [packer_class, traits]
     end
 
     private_class_method def self.determine_field_type(
-      field_name=nil,
-      packer_class=nil,
-      &block
+      field_name,
+      packer_class,
+      block
     )
       if block
         if field_name
@@ -69,127 +75,6 @@ module Sequel
           ASSOCIATION_FIELD
         else
           METHOD_FIELD
-        end
-      end
-    end
-
-    private_class_method def self.validate_field_args(
-      field_name=nil,
-      packer_class=nil,
-      *traits,
-      &block
-    )
-      fail ModelNotYetDeclaredError if !@model
-
-      # This check applies to all invocations:
-      if field_name && !field_name.is_a?(Symbol) && !field_name.is_a?(String)
-        raise(
-          FieldArgumentError,
-          'Field name passed to Sequel::Packer::field must be a Symbol or ' +
-            'a String.',
-        )
-      end
-
-      if block
-        # If the user passed a block, we'll assume they either want:
-        #     field :foo {|model| ...}
-        # or  field {|model, hash| ...}
-        #
-        if packer_class || traits.any?
-          raise(
-            FieldArgumentError,
-            'When passing a block to Sequel::Packer::field, either pass the ' +
-              'name of field as a single argument (e.g., field(:foo) ' +
-              '{|model| ...}), or nothing at all to perform arbitrary ' +
-              'modifications of the final hash (e.g., field {|model, hash| ' +
-              '...}).',
-          )
-        end
-
-        arity = block.arity
-
-        # When using Symbol.to_proc (field(:foo, &:calculate_foo)), the block has arity -1.
-        if field_name && arity != 1 && arity != -1
-          raise(
-            FieldArgumentError,
-            "The block used to define :#{field_name} must accept exactly " +
-              'one argument.',
-          )
-        end
-
-        if !field_name && arity != 2
-          raise(
-            FieldArgumentError,
-            'When passing an arbitrary block to Sequel::Packer::field, the ' +
-              'block must accept exactly two arguments: the model and the ' +
-              'partially packed hash.',
-          )
-        end
-      else
-        # In this part of the if, block is not defined
-
-        if !field_name
-          # Note that this error isn't technically true, but usage of the
-          # field {|model, hash| ...} variant is likely pretty rare.
-          raise(
-            FieldArgumentError,
-            'Must pass a field name to Sequel::Packer::field.',
-          )
-        end
-
-        if packer_class || traits.any?
-          if !@model.associations.include?(field_name)
-            raise(
-              FieldArgumentError,
-              'Passing multiple arguments to Sequel::Packer::field ' +
-                'is used to serialize associations with designated ' +
-                "packers, but the association #{field_name} does not " +
-                "exist on #{@model}.",
-            )
-          end
-
-          if !(packer_class < Sequel::Packer)
-            raise(
-              FieldArgumentError,
-              'When declaring the serialization behavior for an ' +
-                'association, the second argument must be a Sequel::Packer ' +
-                "subclass. #{packer_class} is not a subclass of " +
-                'Sequel::Packer.',
-            )
-          end
-
-          association_model =
-            @model.association_reflections[field_name].associated_class
-          packer_class_model = packer_class.instance_variable_get(:@model)
-
-          if !(association_model <= packer_class_model)
-            raise(
-              FieldArgumentError,
-              "Model for association packer (#{packer_class_model}) " +
-                "doesn't match model for the #{field_name} association " +
-                "(#{association_model})",
-            )
-          end
-
-          packer_class_traits = packer_class.instance_variable_get(:@class_traits)
-          traits.each do |trait|
-            if !packer_class_traits.key?(trait)
-              raise(
-                FieldArgumentError,
-                "Trait :#{trait} isn't defined for #{packer_class} used to " +
-                  "pack #{field_name} association.",
-              )
-            end
-          end
-        else
-          if @model.associations.include?(field_name)
-            raise(
-              FieldArgumentError,
-              'When declaring a field for a model association, you must ' +
-                'also pass a Sequel::Packer class to use as the second ' +
-                'argument to field.',
-            )
-          end
         end
       end
     end
@@ -231,7 +116,7 @@ module Sequel
       traits.each do |trait|
         trait_block = class_traits[trait]
         if !trait_block
-          raise ArgumentError, "Unknown trait for #{self.class}: :#{trait}"
+          raise UnknownTraitError, "Unknown trait for #{self.class}: :#{trait}"
         end
 
         self.instance_exec(&trait_block)
@@ -299,13 +184,15 @@ module Sequel
 
     def field(field_name=nil, packer_class=nil, *traits, &block)
       klass = self.class
-      klass.send(
-        :validate_field_args, field_name, packer_class, *traits, &block)
+      model = klass.instance_variable_get(:@model)
+
+      Validation.check_field_arguments(
+        model, field_name, packer_class, traits, &block)
       field_type =
-        klass.send(:determine_field_type, field_name, packer_class, &block)
+        klass.send(:determine_field_type, field_name, packer_class, block)
 
       if field_type == ASSOCIATION_FIELD
-        @instance_packers[field_name] = [packer_class, traits]
+        set_association_packer(field_name, packer_class, *traits)
       end
 
       @instance_fields << {
@@ -316,6 +203,10 @@ module Sequel
     end
 
     def set_association_packer(association, packer_class, *traits)
+      model = self.class.instance_variable_get(:@model)
+      Validation.check_association_packer(
+        model, association, packer_class, traits)
+
       @instance_packers[association] = [packer_class, traits]
     end
 
@@ -349,4 +240,5 @@ module Sequel
 end
 
 require 'sequel/packer/eager_hash'
+require 'sequel/packer/validation'
 require "sequel/packer/version"
