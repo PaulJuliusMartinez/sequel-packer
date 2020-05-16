@@ -549,4 +549,74 @@ class Sequel::PackerTest < Minitest::Test
     assert_equal recent_post.id, packed_user[:most_recent_post][:id]
     assert_equal [{id: even_comment.id}], packed_user[:even_comments]
   end
+
+  ######################
+  # precompute testing #
+  ######################
+
+  class PrecomputedCommentPacker < Sequel::Packer
+    model Comment
+
+    precompute {|comments| @total_comments = comments.count}
+    field(:precomputed_value) {|_| @total_comments}
+
+    trait :precompute_trait do
+      precompute {|comments| @comment_ids = comments.map(&:id).sort}
+      field(:precomputed_trait_value) {|_| @comment_ids}
+    end
+  end
+
+  class PrecomputedPostPacker < Sequel::Packer
+    model Post
+
+    precompute {|posts| @total_posts = posts.count}
+    field(:precomputed_value) {|_| @total_posts}
+
+    trait :precompute_trait do
+      precompute {|posts| @post_ids = posts.map(&:id).sort}
+      field(:precomputed_trait_value) {|_| @post_ids}
+    end
+
+    field :comments, PrecomputedCommentPacker, :precompute_trait
+  end
+
+  class PrecomputedUserPacker < Sequel::Packer
+    model User
+
+    precompute {|users| @total_users = users.count}
+    field(:precomputed_value) {|_| @total_users}
+
+    trait :precompute_trait do
+      precompute {|users| @user_ids = users.map(&:id).sort}
+      field(:precomputed_trait_value) {|_| @user_ids}
+    end
+
+    field :posts, PrecomputedPostPacker, :precompute_trait
+  end
+
+  def test_precompute
+    users = 2.times.map {|n| User.create(name: "User #{n}")}
+    posts = users.flat_map do |user|
+      2.times.map {|n| Post.create(author: user)}
+    end
+    comments = posts.flat_map do |post|
+      users.map.with_index do |user, n|
+        Comment.create(commenter: user, post: post)
+      end
+    end
+
+    packed_user = PrecomputedUserPacker
+      .new(:precompute_trait)
+      .pack(User.dataset)[0]
+    assert_equal 2, packed_user[:precomputed_value]
+    assert_equal users.map(&:id), packed_user[:precomputed_trait_value]
+
+    packed_post = packed_user[:posts][0]
+    assert_equal 4, packed_post[:precomputed_value]
+    assert_equal posts.map(&:id), packed_post[:precomputed_trait_value]
+
+    packed_comment = packed_post[:comments][0]
+    assert_equal 8, packed_comment[:precomputed_value]
+    assert_equal comments.map(&:id), packed_comment[:precomputed_trait_value]
+  end
 end

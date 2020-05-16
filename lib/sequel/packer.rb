@@ -1,3 +1,5 @@
+require 'sequel'
+
 module Sequel
   class Packer
     # For invalid arguments provided to the field class method.
@@ -13,6 +15,7 @@ module Sequel
       subclass.instance_variable_set(:@class_traits, {})
       subclass.instance_variable_set(:@class_packers, {})
       subclass.instance_variable_set(:@class_eager_hash, nil)
+      subclass.instance_variable_set(:@class_precomputations, [])
     end
 
     def self.model(klass)
@@ -96,6 +99,13 @@ module Sequel
       )
     end
 
+    def self.precompute(&block)
+      if !block
+        raise ArgumentError, 'Sequel::Packer.precompute must be passed a block'
+      end
+      @class_precomputations << block
+    end
+
     def initialize(*traits)
       @subpackers = nil
 
@@ -104,10 +114,12 @@ module Sequel
         @instance_fields = class_fields
         @instance_packers = class_packers
         @instance_eager_hash = class_eager_hash
+        @instance_precomputations = class_precomputations
       else
         @instance_fields = class_fields.dup
         @instance_packers = class_packers.dup
         @instance_eager_hash = EagerHash.deep_dup(class_eager_hash)
+        @instance_precomputations = class_precomputations.dup
       end
 
       # Evaluate trait blocks, which might add new fields to @instance_fields,
@@ -136,10 +148,53 @@ module Sequel
       end
     end
 
-    def pack(dataset)
-      dataset = dataset.eager(@instance_eager_hash) if @instance_eager_hash
-      models = dataset.all
-      pack_models(models)
+    def pack(to_be_packed)
+      case to_be_packed
+      when Sequel::Dataset
+        if @instance_eager_hash
+          to_be_packed = to_be_packed.eager(@instance_eager_hash)
+        end
+        models = to_be_packed.all
+        run_precomputations(models)
+        pack_models(models)
+      when Sequel::Model
+        run_precomputations([models])
+        pack_model(to_be_packed)
+      when Array
+        run_precomputations(models)
+        pack_models(to_be_packed)
+      when NilClass
+        nil
+      end
+    end
+
+    private
+
+    def run_precomputations(models)
+      @instance_packers.each do |association, _|
+        subpacker = @subpackers[association]
+        next if !subpacker.send(:has_precomputations?)
+
+        reflection = class_model.association_reflection(association)
+
+        if reflection.returns_array?
+          all_associated_records = models.flat_map {|m| m.send(association)}.uniq
+        else
+          all_associated_records = models.map {|m| m.send(association)}.compact
+        end
+
+        subpacker.send(:run_precomputations, all_associated_records)
+      end
+
+      @instance_precomputations.each do |block|
+        instance_exec(models, &block)
+      end
+    end
+
+    def has_precomputations?
+      return true if @instance_precomputations.any?
+      return false if !@subpackers
+      @subpackers.values.any? {|sp| sp.send(:has_precomputations?)}
     end
 
     def pack_model(model)
@@ -174,20 +229,17 @@ module Sequel
       packer = @subpackers[association]
 
       if associated_models.is_a?(Array)
-        packer.pack_models(associated_models)
+        packer.send(:pack_models, associated_models)
       else
-        packer.pack_model(associated_models)
+        packer.send(:pack_model, associated_models)
       end
     end
 
-    private
-
     def field(field_name=nil, packer_class=nil, *traits, &block)
       klass = self.class
-      model = klass.instance_variable_get(:@model)
 
       Validation.check_field_arguments(
-        model, field_name, packer_class, traits, &block)
+        class_model, field_name, packer_class, traits, &block)
       field_type =
         klass.send(:determine_field_type, field_name, packer_class, block)
 
@@ -203,15 +255,10 @@ module Sequel
     end
 
     def set_association_packer(association, packer_class, *traits)
-      model = self.class.instance_variable_get(:@model)
       Validation.check_association_packer(
-        model, association, packer_class, traits)
+        class_model, association, packer_class, traits)
 
       @instance_packers[association] = [packer_class, traits]
-    end
-
-    def eager_hash
-      @instance_eager_hash
     end
 
     def eager(*associations)
@@ -219,6 +266,21 @@ module Sequel
         @instance_eager_hash,
         EagerHash.normalize_eager_args(*associations),
       )
+    end
+
+    def precompute(&block)
+      if !block
+        raise ArgumentError, 'Sequel::Packer.precompute must be passed a block'
+      end
+      @instance_precomputations << block
+    end
+
+    def eager_hash
+      @instance_eager_hash
+    end
+
+    def class_model
+      self.class.instance_variable_get(:@model)
     end
 
     def class_fields
@@ -235,6 +297,10 @@ module Sequel
 
     def class_traits
       self.class.instance_variable_get(:@class_traits)
+    end
+
+    def class_precomputations
+      self.class.instance_variable_get(:@class_precomputations)
     end
   end
 end

@@ -1,5 +1,3 @@
-require 'sequel'
-
 module Sequel
   class Packer
     module EagerHash
