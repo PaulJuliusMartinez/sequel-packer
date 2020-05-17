@@ -1,3 +1,12 @@
+### 0.4.0 (2020-05-17)
+
+* **_BREAKING CHANGE:_** `#pack_models` and `#pack_model` have been changed to
+  private methods. In their place `Sequel::Packer#pack` has been changed to
+  accept a dataset, an array of models or a single model, while still ensuring
+  eager loading takes place.
+* Add `self.precompute(&block)` for performing bulk computations outside of
+  Packer paradigm.
+
 ### 0.3.0 (2020-05-14)
 
 * Add `self.set_association_packer(association, packer_class, *traits)` and
