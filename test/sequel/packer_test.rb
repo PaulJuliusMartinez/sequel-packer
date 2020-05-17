@@ -642,10 +642,6 @@ class Sequel::PackerTest < Minitest::Test
   class ContextPacker < Sequel::Packer
     model User
 
-    def initialize_context(context)
-      @initialized_context_value = context[:initialized]
-    end
-
     with_context do
       @with_context_value = @context[:with_context]
     end
@@ -656,10 +652,6 @@ class Sequel::PackerTest < Minitest::Test
 
     field :with_context do |_|
       @with_context_value
-    end
-
-    field :initialized_context do |_|
-      @initialized_context_value
     end
 
     field :posts, ChildContextPacker
@@ -677,29 +669,11 @@ class Sequel::PackerTest < Minitest::Test
     assert_equal 'bar', packed_user[:with_context]
   end
 
-  def test_initialized_context
-    user = User.create(name: 'Paul')
-    packed_user = ContextPacker.new(initialized: 'baz').pack(user)
-    assert_equal 'baz', packed_user[:initialized_context]
-  end
-
   def test_context_passed_to_subpackers
     user = User.create(name: 'Paul')
     Post.create(author: user)
     packed_user = ContextPacker.new(inherited: 'qux').pack(user)
     assert_equal 'qux', packed_user[:posts][0][:inherited_context]
-  end
-
-  class SubclassContextPacker < ContextPacker
-    field :context_from_parent do |_|
-      @initialized_context_value
-    end
-  end
-
-  def test_initialized_context_in_subclass
-    user = User.create(name: 'Paul')
-    packed_user = SubclassContextPacker.new(initialized: 'baz').pack(user)
-    assert_equal 'baz', packed_user[:initialized_context]
   end
 
   ####################

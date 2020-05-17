@@ -127,7 +127,6 @@ module Sequel
 
     def initialize(*traits, **context)
       @context = context
-      initialize_context(@context)
 
       @subpackers = nil
 
@@ -172,10 +171,6 @@ module Sequel
           {association => association_packer.send(:eager_hash)},
         )
       end
-    end
-
-    def initialize_context(context)
-      # Do nothing; subclasses can override this method.
     end
 
     def pack(to_be_packed)
@@ -326,8 +321,7 @@ module Sequel
       raise(
         UnnecessaryWithContextError,
         'There is no need to call with_context from within a trait block; ' +
-          '@context and other values declared during #initialize_context can ' +
-          'be accessed directly.',
+          '@context can be accessed directly.',
       )
     end
 
