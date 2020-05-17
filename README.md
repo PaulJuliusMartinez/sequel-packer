@@ -493,6 +493,45 @@ class PostPacker < Sequel::Packer
 end
 ```
 
+### `self.precompute(&block)`
+
+Occasionally packing a model may require a computation that doesn't fit in with
+the rest of the Packer paradigm. This may be a Sequel query that is particularly
+difficult to express as an association, or even a call to an external service.
+If such a computation can be performed in bulk, then the `precompute` method can
+be used as an entry point for that operation.
+
+The `precompute` method will execute a given block and pass it all of the models
+that will be packed using that packer. This block will be executed a single
+time, even when called by a deeply nested packer.
+
+The `precompute` block is `instance_exec`ed in the context of the packer
+instance, the result of any computation can be saved in a simple instance
+variable (`@precomputed_result`) and later referenced inside the blocks that are
+passed to `field` methods.
+
+As an example, suppose a video uploading platform performs additional video
+processing on every uploaded video and exposes the status of that processing as
+a separate service over the network, rather than directly with the upload
+metadata in the database. `precompute` could be used as follows:
+
+```ruby
+class VideoUploadPacker < Sequel::Packer
+  model VideoUpload
+
+  precompute do |video_uploads|
+    @processing_statuses = ResolutionService
+      .get_status_bulk(ids: video_uploads.map(&:id))
+  end
+
+  field :id
+  field :filename
+  field :processing_status do |video_upload|
+    @processing_statuses[video_upload.id]
+  end
+end
+```
+
 
 ### `initialize(*traits)`
 
