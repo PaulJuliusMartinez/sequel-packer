@@ -538,10 +538,16 @@ end
 When creating an instance of a Packer class, pass in any traits desired to
 specify what additional data should be packed, if any.
 
-### `pack(dataset)`
+### `pack(dataset_or_models_or_model)`
 
-After creating a new instance of a Packer class, call `packer.pack(dataset)` to
-materialize a dataset and convert it to an array of packed Ruby hashes.
+After creating a new instance of a Packer class, call `packer.pack` to tranform
+your data into packed Ruby hashes.
+
+`pack` can accept a dataset, an array of models, or a single model. Even when
+passing models that have already been materialized, the Packer will make sure
+to eagerly load any nested associations needed for packing. When passed a
+dataset or an array of models, `pack` will return an array of hashes, and when
+passed just a single model, it will return a single hash.
 
 ## Development
 
