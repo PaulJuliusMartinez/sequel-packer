@@ -155,13 +155,30 @@ module Sequel
           to_be_packed = to_be_packed.eager(@instance_eager_hash)
         end
         models = to_be_packed.all
+
         run_precomputations(models)
         pack_models(models)
       when Sequel::Model
-        run_precomputations([models])
+        if @instance_eager_hash
+          EagerLoading.eager_load(
+            class_model,
+            [to_be_packed],
+            @instance_eager_hash
+          )
+        end
+
+        run_precomputations([to_be_packed])
         pack_model(to_be_packed)
       when Array
-        run_precomputations(models)
+        if @instance_eager_hash
+          EagerLoading.eager_load(
+            class_model,
+            to_be_packed,
+            @instance_eager_hash
+          )
+        end
+
+        run_precomputations(to_be_packed)
         pack_models(to_be_packed)
       when NilClass
         nil
@@ -306,5 +323,6 @@ module Sequel
 end
 
 require 'sequel/packer/eager_hash'
+require 'sequel/packer/eager_loading'
 require 'sequel/packer/validation'
 require "sequel/packer/version"

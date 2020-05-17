@@ -418,17 +418,24 @@ class Sequel::PackerTest < Minitest::Test
     Like.create(liker: user2, post: post1, comment: comment1)
     Like.create(liker: user1, post: post2, comment: comment2)
 
+    packer = UserTraitsPacker
+      .new(:posts_with_comments, :comments_with_likes_with_liker)
+
     # users (1)
     # - posts (2)
     #   - comments (3)
     # - comments (4)
     #   - likes (5)
     #     - liker (6)
-    assert_n_queries(6) do
-      UserTraitsPacker
-        .new(:posts_with_comments, :comments_with_likes_with_liker)
-        .pack(User.dataset)
-    end
+    assert_n_queries(6) {packer.pack(User.dataset)}
+
+    # No query for users
+    users = User.dataset.all
+    assert_n_queries(5) {packer.pack(users)}
+
+    # No query for users
+    user = user1.refresh
+    assert_n_queries(5) {packer.pack(user)}
   end
 
   #################
