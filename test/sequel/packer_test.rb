@@ -626,4 +626,94 @@ class Sequel::PackerTest < Minitest::Test
     assert_equal 8, packed_comment[:precomputed_value]
     assert_equal comments.map(&:id), packed_comment[:precomputed_trait_value]
   end
+
+  ###################
+  # context testing #
+  ###################
+
+  class ChildContextPacker < Sequel::Packer
+    model Post
+
+    field :inherited_context do |_|
+      @context[:inherited]
+    end
+  end
+
+  class ContextPacker < Sequel::Packer
+    model User
+
+    def initialize_context(context)
+      @initialized_context_value = context[:initialized]
+    end
+
+    with_context do
+      @with_context_value = @context[:with_context]
+    end
+
+    field :basic_context do |_|
+      @context[:basic]
+    end
+
+    field :with_context do |_|
+      @with_context_value
+    end
+
+    field :initialized_context do |_|
+      @initialized_context_value
+    end
+
+    field :posts, ChildContextPacker
+  end
+
+  def test_basic_context
+    user = User.create(name: 'Paul')
+    packed_user = ContextPacker.new(basic: 'foo').pack(user)
+    assert_equal 'foo', packed_user[:basic_context]
+  end
+
+  def test_with_context
+    user = User.create(name: 'Paul')
+    packed_user = ContextPacker.new(with_context: 'bar').pack(user)
+    assert_equal 'bar', packed_user[:with_context]
+  end
+
+  def test_initialized_context
+    user = User.create(name: 'Paul')
+    packed_user = ContextPacker.new(initialized: 'baz').pack(user)
+    assert_equal 'baz', packed_user[:initialized_context]
+  end
+
+  def test_context_passed_to_subpackers
+    user = User.create(name: 'Paul')
+    Post.create(author: user)
+    packed_user = ContextPacker.new(inherited: 'qux').pack(user)
+    assert_equal 'qux', packed_user[:posts][0][:inherited_context]
+  end
+
+  class SubclassContextPacker < ContextPacker
+    field :context_from_parent do |_|
+      @initialized_context_value
+    end
+  end
+
+  def test_initialized_context_in_subclass
+    user = User.create(name: 'Paul')
+    packed_user = SubclassContextPacker.new(initialized: 'baz').pack(user)
+    assert_equal 'baz', packed_user[:initialized_context]
+  end
+
+  ####################
+  # subclass testing #
+  ####################
+
+  class BasicSubclassPacker < UserIdPacker
+    field :name
+  end
+
+  def test_subclass_inherits_fields
+    user = User.create(name: 'Paul')
+    packed_user = BasicSubclassPacker.new.pack(user)
+    assert_equal user.id, packed_user[:id]
+    assert_equal 'Paul', packed_user[:name]
+  end
 end

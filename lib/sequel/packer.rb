@@ -9,13 +9,25 @@ module Sequel
     class AssociationDoesNotExistError < StandardError; end
     class InvalidAssociationPackerError < StandardError; end
     class UnknownTraitError < StandardError; end
+    class UnnecessaryWithContextError < StandardError; end
 
     def self.inherited(subclass)
-      subclass.instance_variable_set(:@class_fields, [])
-      subclass.instance_variable_set(:@class_traits, {})
-      subclass.instance_variable_set(:@class_packers, {})
-      subclass.instance_variable_set(:@class_eager_hash, nil)
-      subclass.instance_variable_set(:@class_precomputations, [])
+      subclass.instance_variable_set(:@model, @model)
+      subclass.instance_variable_set(:@class_fields, @class_fields&.dup || [])
+      subclass.instance_variable_set(:@class_traits, @class_traits&.dup || {})
+      subclass.instance_variable_set(:@class_packers, @class_packers&.dup || {})
+      subclass.instance_variable_set(
+        :@class_eager_hash,
+        EagerHash.deep_dup(@class_eager_hash),
+      )
+      subclass.instance_variable_set(
+        :@class_precomputations,
+        @class_precomputations&.dup || [],
+      )
+      subclass.instance_variable_set(
+        :@class_with_contexts,
+        @class_with_contexts&.dup || [],
+      )
     end
 
     def self.model(klass)
@@ -106,7 +118,17 @@ module Sequel
       @class_precomputations << block
     end
 
-    def initialize(*traits)
+    def self.with_context(&block)
+      if !block
+        raise ArgumentError, 'Sequel::Packer.with_context must be passed a block'
+      end
+      @class_with_contexts << block
+    end
+
+    def initialize(*traits, **context)
+      @context = context
+      initialize_context(@context)
+
       @subpackers = nil
 
       # If there aren't any traits, we can just re-use the class variables.
@@ -120,6 +142,10 @@ module Sequel
         @instance_packers = class_packers.dup
         @instance_eager_hash = EagerHash.deep_dup(class_eager_hash)
         @instance_precomputations = class_precomputations.dup
+      end
+
+      class_with_contexts.each do |with_context_block|
+        self.instance_exec(&with_context_block)
       end
 
       # Evaluate trait blocks, which might add new fields to @instance_fields,
@@ -136,7 +162,7 @@ module Sequel
 
       # Create all the subpackers, and merge in their eager hashes.
       @instance_packers.each do |association, (packer_class, traits)|
-        association_packer = packer_class.new(*traits)
+        association_packer = packer_class.new(*traits, @context)
 
         @subpackers ||= {}
         @subpackers[association] = association_packer
@@ -146,6 +172,10 @@ module Sequel
           {association => association_packer.send(:eager_hash)},
         )
       end
+    end
+
+    def initialize_context(context)
+      # Do nothing; subclasses can override this method.
     end
 
     def pack(to_be_packed)
@@ -292,6 +322,15 @@ module Sequel
       @instance_precomputations << block
     end
 
+    def with_context(&block)
+      raise(
+        UnnecessaryWithContextError,
+        'There is no need to call with_context from within a trait block; ' +
+          '@context and other values declared during #initialize_context can ' +
+          'be accessed directly.',
+      )
+    end
+
     def eager_hash
       @instance_eager_hash
     end
@@ -318,6 +357,10 @@ module Sequel
 
     def class_precomputations
       self.class.instance_variable_get(:@class_precomputations)
+    end
+
+    def class_with_contexts
+      self.class.instance_variable_get(:@class_with_contexts)
     end
   end
 end
