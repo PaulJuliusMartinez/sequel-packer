@@ -1,7 +1,7 @@
 # Sequel::Packer
 
-`Sequel::Packer` is a Ruby JSON serialization library to be used with the Sequel
-ORM offering the following features:
+`Sequel::Packer` is a Ruby JSON serialization library to be used with the [Sequel
+ORM](https://github.com/jeremyevans/sequel) offering the following features:
 
 * **Declarative:** Define the shape of your serialized data with a simple,
   straightforward DSL.
