@@ -18,41 +18,6 @@ ORM](https://github.com/jeremyevans/sequel) with the following qualities:
   and nested associations it needs to eager load in order to avoid any N+1 query
   issues.
 
-## Contents
-
-- [Example](#example)
-- [Getting Started](#getting-started)
-  - [Installation](#installation)
-  - [Example Schema](#example-schema)
-  - [Basic Fields](#basic-fields)
-  - [Packing Associations by Nesting Packers](#packing-associations-by-nesting-packers)
-  - [Traits](#traits)
-- [API Reference](#api-reference)
-  - [Using a Packer](#using-a-packer)
-  - [Defining a Packer](#defining-a-packer)
-    - [`self.model(sequel_model_class)`](#selfmodelsequel_model_class)
-    - [`self.field(column_name)` (or `self.field(method_name)`)](#selffieldcolumn_name-or-selffieldmethod_name)
-    - [`self.field(key, &block)`](#selffieldkey-block)
-    - [`self.field(association, subpacker, *traits)`](#selffieldassociation-subpacker-traits)
-    - [`self.field(&block)`](#selffieldblock)
-    - [`self.trait(trait_name, &block)`](#selftraittrait_name-block)
-    - [`self.eager(*associations)`](#selfeagerassociations)
-    - [`self.set_association_packer(association, subpacker, *traits)`](#selfset_association_packerassociation-subpacker-traits)
-    - [`self.pack_association(association, models)`](#selfpack_associationassociation-models)
-    - [`self.precompute(&block)`](#selfprecomputeblock)
-  - [Context](#context)
-    - [`self.with_context(&block)`](#selfwith_contextblock)
-- [Potential Future Functionality](#potential-future-functionality)
-  - [Automatically Generated Type Declarations](#automatically-generated-type-declarations)
-  - [Lifecycle Hooks](#lifecycle-hooks)
-  - [Less Data Fetching](#less-data-fetching)
-  - [Other Enhancements](#other-enhancements)
-- [Contributing](#contributing)
-  - [Development](#development)
-  - [Releases](#releases)
-- [Attribution](#attribution)
-- [License](#license)
-
 ## Example
 
 `Sequel::Packer` uses your existing `Sequel::Model` declarations and leverages
@@ -125,6 +90,41 @@ UserPacker.pack(User[1], :posts)
   ],
 }
 ```
+
+## Contents
+
+- [Example](#example)
+- [Getting Started](#getting-started)
+  - [Installation](#installation)
+  - [Example Schema](#example-schema)
+  - [Basic Fields](#basic-fields)
+  - [Packing Associations by Nesting Packers](#packing-associations-by-nesting-packers)
+  - [Traits](#traits)
+- [API Reference](#api-reference)
+  - [Using a Packer](#using-a-packer)
+  - [Defining a Packer](#defining-a-packer)
+    - [`self.model(sequel_model_class)`](#selfmodelsequel_model_class)
+    - [`self.field(column_name)` (or `self.field(method_name)`)](#selffieldcolumn_name-or-selffieldmethod_name)
+    - [`self.field(key, &block)`](#selffieldkey-block)
+    - [`self.field(association, subpacker, *traits)`](#selffieldassociation-subpacker-traits)
+    - [`self.field(&block)`](#selffieldblock)
+    - [`self.trait(trait_name, &block)`](#selftraittrait_name-block)
+    - [`self.eager(*associations)`](#selfeagerassociations)
+    - [`self.set_association_packer(association, subpacker, *traits)`](#selfset_association_packerassociation-subpacker-traits)
+    - [`self.pack_association(association, models)`](#selfpack_associationassociation-models)
+    - [`self.precompute(&block)`](#selfprecomputeblock)
+  - [Context](#context)
+    - [`self.with_context(&block)`](#selfwith_contextblock)
+- [Potential Future Functionality](#potential-future-functionality)
+  - [Automatically Generated Type Declarations](#automatically-generated-type-declarations)
+  - [Lifecycle Hooks](#lifecycle-hooks)
+  - [Less Data Fetching](#less-data-fetching)
+  - [Other Enhancements](#other-enhancements)
+- [Contributing](#contributing)
+  - [Development](#development)
+  - [Releases](#releases)
+- [Attribution](#attribution)
+- [License](#license)
 
 ## Getting Started
 
