@@ -10,6 +10,7 @@ module Sequel
     class InvalidAssociationPackerError < StandardError; end
     class UnknownTraitError < StandardError; end
     class UnnecessaryWithContextError < StandardError; end
+    class NoAssociationSubpackerDefinedError < StandardError; end
 
     # Think of this method as the "initialize" method for a Packer class.
     # Every Packer class keeps track of the fields, traits, and other various
@@ -172,10 +173,12 @@ module Sequel
       @class_with_contexts << block
     end
 
+    # Initialize a Packer instance with the given traits and additional context.
+    # This Packer can then pack multiple datasets or models via the pack method.
     def initialize(*traits, **context)
       @context = context
 
-      @subpackers = nil
+      @subpackers = {}
 
       # Technically we only need to duplicate these fields if we modify any of
       # them, but manually implementing some sort of copy-on-write functionality
@@ -206,7 +209,6 @@ module Sequel
       @instance_packers.each do |association, (subpacker, traits)|
         association_packer = subpacker.new(*traits, @context)
 
-        @subpackers ||= {}
         @subpackers[association] = association_packer
 
         @instance_eager_hash = EagerHash.merge!(
@@ -319,6 +321,14 @@ module Sequel
       return nil if !associated_models
 
       packer = @subpackers[association]
+
+      if !packer
+        raise(
+          NoAssociationSubpackerDefinedError,
+          "pack_association called for the #{class_model}.#{association} " +
+            'association, but no Packer has been set for that association.',
+        )
+      end
 
       if associated_models.is_a?(Array)
         packer.send(:pack_models, associated_models)

@@ -36,6 +36,9 @@ class Sequel::PackerTest < Minitest::Test
   AssociationDoesNotExist = Sequel::Packer::AssociationDoesNotExistError
   InvalidAssociation = Sequel::Packer::InvalidAssociationPackerError
   UnknownTrait = Sequel::Packer::UnknownTraitError
+  UnnecessaryWithContext = Sequel::Packer::UnnecessaryWithContextError
+  NoAssociationSubpackerDefined =
+    Sequel::Packer::NoAssociationSubpackerDefinedError
 
   def test_raises_if_model_not_yet_declared
     assert_raises(Sequel::Packer::ModelNotYetDeclaredError) do
@@ -145,6 +148,39 @@ class Sequel::PackerTest < Minitest::Test
       trait(:no_block)
     end
     assert_includes err.message, 'Must give a block'
+  end
+
+  class ErrorPacker < Sequel::Packer
+    model User
+
+    trait :not_needed do
+      with_context do
+        # Stuff will break.
+      end
+    end
+
+    field :gonna_break do |user|
+      pack_association(:posts, user.posts)
+    end
+  end
+
+  def test_unnecessary_with_context
+    err = assert_raises(UnnecessaryWithContext) do
+      ErrorPacker.new(:not_needed)
+    end
+    assert_includes err.message, 'no need to call with_context'
+  end
+
+  def test_no_assocation_subpacker_defined
+    user = User.create(name: 'Paul')
+    Post.create(author: user)
+
+    err = assert_raises(NoAssociationSubpackerDefined) do
+      ErrorPacker.new.pack(user)
+    end
+
+    assert_includes err.message, 'User.posts'
+    assert_includes err.message, 'no Packer has been set'
   end
 
   ######################################
