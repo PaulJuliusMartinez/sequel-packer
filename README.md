@@ -43,6 +43,7 @@ ORM](https://github.com/jeremyevans/sequel) offering the following features:
 - [Contributing](#contributing)
   - [Development](#development)
   - [Releases](#releases)
+- [Attribution](#attribution)
 - [License](#license)
 
 ## Example
@@ -800,6 +801,13 @@ To release a new version, update the version number in
 run `rake release`, which which will create a git tag for the version, push git
 commits and tags, and push the `.gem` file to
 [rubygems.org](https://rubygems.org).
+
+## Attribution
+
+[Karthik Viswanathan](https://github.com/karthikv) designed the original API
+of the Packer library while at [Affinity](https://www.affinity.co/). This
+library is a ground up rewrite which defines a very similar API, but shares no
+no code with the original implementation.
 
 ## License
 
