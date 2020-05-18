@@ -676,6 +676,56 @@ class Sequel::PackerTest < Minitest::Test
     assert_equal 'qux', packed_user[:posts][0][:inherited_context]
   end
 
+  class EagerWithContextPacker < Sequel::Packer
+    model User
+
+    # Need this to ensure @class_eager_hash isn't nil.
+    eager :comments
+
+    with_context do
+      if @context[:filter]
+        eager(posts: (proc {|ds| ds.where(Sequel.lit('id % 2 = 0'))}))
+      end
+    end
+
+    field :posts, PostIdPacker
+  end
+
+  # Make sure that @instance_eager_hash gets duplicated when using with_context
+  # and @class_eager_hash is unmodified.
+  def test_with_context_duplicates_internal_data_structures
+    user = User.create(name: 'Paul')
+    2.times {Post.create(author: user)}
+
+    packed_user = EagerWithContextPacker.new(filter: true).pack(user)
+    assert_equal 1, packed_user[:posts].length
+
+    packed_user = EagerWithContextPacker.new(filter: false).pack(user.refresh)
+    assert_equal 2, packed_user[:posts].length
+  end
+
+  class SubpackerUsesEagerContextPacker < Sequel::Packer
+    model Post
+
+    # Need this to ensure @class_eager_hash isn't nil.
+    eager :comments
+
+    field :author, EagerWithContextPacker
+  end
+
+  def test_internal_eager_hash_not_modified_by_child_packers
+    user = User.create(name: 'Paul')
+    2.times {Post.create(author: user)}
+    post = Post.first
+
+    packed_post = SubpackerUsesEagerContextPacker.new(filter: true).pack(post)
+    assert_equal 1, packed_post[:author][:posts].length
+
+    post.refresh
+    packed_post = SubpackerUsesEagerContextPacker.new(filter: false).pack(post)
+    assert_equal 2, packed_post[:author][:posts].length
+  end
+
   ####################
   # subclass testing #
   ####################

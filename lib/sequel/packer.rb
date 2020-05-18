@@ -130,21 +130,13 @@ module Sequel
 
       @subpackers = nil
 
-      # If there aren't any trait or with_context blocks, we can just re-use the
-      # class variables. (Technically with_context blocks don't require making
-      # copies, but having an ad-hoc copy-on-write setup for these variables
-      # makes the code ugly and is error-prone.
-      if class_with_contexts.empty? && traits.empty?
-        @instance_fields = class_fields
-        @instance_packers = class_packers
-        @instance_eager_hash = class_eager_hash
-        @instance_precomputations = class_precomputations
-      else
-        @instance_fields = class_fields.dup
-        @instance_packers = class_packers.dup
-        @instance_eager_hash = EagerHash.deep_dup(class_eager_hash)
-        @instance_precomputations = class_precomputations.dup
-      end
+      # Technically we only need to duplicate these fields if we modify any of
+      # them, but manually implementing some sort of copy-on-write functionality
+      # is messy and error prone.
+      @instance_fields = class_fields.dup
+      @instance_packers = class_packers.dup
+      @instance_eager_hash = EagerHash.deep_dup(class_eager_hash)
+      @instance_precomputations = class_precomputations.dup
 
       class_with_contexts.each do |with_context_block|
         self.instance_exec(&with_context_block)
