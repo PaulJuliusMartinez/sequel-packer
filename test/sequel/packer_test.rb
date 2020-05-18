@@ -198,7 +198,7 @@ class Sequel::PackerTest < Minitest::Test
     paul = User.create(name: 'Paul')
     julius = User.create(name: 'Julius')
 
-    packed_users = BasicFieldPacker.new.pack(User.order(:id))
+    packed_users = BasicFieldPacker.pack(User.order(:id))
 
     assert_equal paul.id, packed_users[0][:id]
     assert_equal paul.name, packed_users[0][:name]
@@ -221,7 +221,7 @@ class Sequel::PackerTest < Minitest::Test
   def test_it_packs_fields_defined_via_blocks
     paul = User.create(name: 'Paul')
 
-    packed_user = BlockFieldPacker.new.pack(User.dataset)[0]
+    packed_user = BlockFieldPacker.pack(User.dataset)[0]
 
     assert_equal paul.id, packed_user[:id]
     assert_equal paul.name, packed_user[:name]
@@ -250,7 +250,7 @@ class Sequel::PackerTest < Minitest::Test
     comment2 = Comment.create(post: post1, commenter: user, content: 'B')
     comment3 = Comment.create(post: post2, commenter: user, content: 'C')
 
-    packed_posts = PostWithCommentsPacker.new.pack(Post.order(:id))
+    packed_posts = PostWithCommentsPacker.pack(Post.order(:id))
     post1_comments = [comment1, comment2]
     packed_post1_comments = packed_posts[0][:comments]
     assert_equal 2, packed_post1_comments.length
@@ -284,7 +284,7 @@ class Sequel::PackerTest < Minitest::Test
     comment2 = Comment.create(post: post1, commenter: user, content: 'B')
     comment3 = Comment.create(post: post2, commenter: user, content: 'C')
 
-    packed_users = UserWithPostsWithCommentsPacker.new.pack(User.dataset)
+    packed_users = UserWithPostsWithCommentsPacker.pack(User.dataset)
     assert_equal 1, packed_users.length
 
     packed_posts = packed_users[0][:posts]
@@ -318,22 +318,20 @@ class Sequel::PackerTest < Minitest::Test
     user = User.create(name: 'Paul')
     Post.create(title: 'Post', author: user)
 
-    packed_post = BasicTraitPacker.new.pack(Post.dataset)[0]
+    packed_post = BasicTraitPacker.pack(Post.dataset)[0]
     refute packed_post.key?(:foobar)
     refute packed_post.key?(:author)
 
-    packed_post_with_author =
-      BasicTraitPacker.new(:author).pack(Post.dataset)[0]
+    packed_post_with_author = BasicTraitPacker.pack(Post.dataset, :author)[0]
     refute packed_post_with_author.key?(:foobar)
     assert_equal({id: user.id}, packed_post_with_author[:author])
 
-    packed_post_with_foobar =
-      BasicTraitPacker.new(:foobar).pack(Post.dataset)[0]
+    packed_post_with_foobar = BasicTraitPacker.pack(Post.dataset, :foobar)[0]
     refute packed_post_with_foobar.key?(:author)
     assert_equal 'bar', packed_post_with_foobar[:foo]
 
     packed_post_with_traits =
-      BasicTraitPacker.new(:author, :foobar).pack(Post.dataset)[0]
+      BasicTraitPacker.pack(Post.dataset, :author, :foobar)[0]
     assert_equal({id: user.id}, packed_post_with_traits[:author])
     assert_equal 'bar', packed_post_with_traits[:foo]
   end
@@ -360,7 +358,7 @@ class Sequel::PackerTest < Minitest::Test
     comment1 = Comment.create(post: post, commenter: user, content: 'A')
     comment2 = Comment.create(post: post, commenter: user, content: 'B')
 
-    packed_post = NestedTraitPacker.new(:comments).pack(Post.dataset)[0]
+    packed_post = NestedTraitPacker.pack(Post.dataset, :comments)[0]
     comments = packed_post[:comments]
     assert_equal [comment1.id, comment2.id], comments.map {|h| h[:id]}.sort
     comments.each do |comment|
@@ -503,7 +501,7 @@ class Sequel::PackerTest < Minitest::Test
     # - posts (2)
     # - comments (3)
     assert_n_queries(3) do
-      packed_users = UserPostAndCommentCountPacker.new.pack(User.dataset)
+      packed_users = UserPostAndCommentCountPacker.pack(User.dataset)
     end
 
     packed_user = packed_users.find {|h| h[:id] == user.id}
@@ -529,15 +527,14 @@ class Sequel::PackerTest < Minitest::Test
     user = User.create(name: 'Paul')
     6.times {Post.create(author: user)}
 
-    packed_users = EagerTraitPacker.new(:posts_id_eq_0_mod_2).pack(User.dataset)
+    packed_users = EagerTraitPacker.pack(User.dataset, :posts_id_eq_0_mod_2)
     assert_equal 3, packed_users[0][:posts].count
 
-    packed_users = EagerTraitPacker.new(:posts_id_eq_0_mod_3).pack(User.dataset)
+    packed_users = EagerTraitPacker.pack(User.dataset, :posts_id_eq_0_mod_3)
     assert_equal 2, packed_users[0][:posts].count
 
     packed_users = EagerTraitPacker
-      .new(:posts_id_eq_0_mod_2, :posts_id_eq_0_mod_3)
-      .pack(User.dataset)
+      .pack(User.dataset, :posts_id_eq_0_mod_2, :posts_id_eq_0_mod_3)
     assert_equal 1, packed_users[0][:posts].count
   end
 
@@ -569,7 +566,7 @@ class Sequel::PackerTest < Minitest::Test
   def test_set_association_packer_and_pack_association
     user = User.create(name: 'Paul')
 
-    packed_user = SetAssociationPacker.new(:even_comments).pack(User.dataset)[0]
+    packed_user = SetAssociationPacker.pack(User.dataset, :even_comments)[0]
     assert_nil packed_user[:most_recent_post]
     assert_empty packed_user[:even_comments]
 
@@ -585,8 +582,7 @@ class Sequel::PackerTest < Minitest::Test
 
     assert_n_queries(3) do
       packed_user = SetAssociationPacker
-        .new(:even_comments)
-        .pack(User.dataset.order(:id))[0]
+        .pack(User.dataset.order(:id), :even_comments)[0]
     end
 
     assert_equal recent_post.id, packed_user[:most_recent_post][:id]
@@ -648,9 +644,7 @@ class Sequel::PackerTest < Minitest::Test
       end
     end
 
-    packed_user = PrecomputedUserPacker
-      .new(:precompute_trait)
-      .pack(User.dataset)[0]
+    packed_user = PrecomputedUserPacker.pack(User.dataset, :precompute_trait)[0]
     assert_equal 2, packed_user[:precomputed_value]
     assert_equal users.map(&:id), packed_user[:precomputed_trait_value]
 
@@ -695,20 +689,20 @@ class Sequel::PackerTest < Minitest::Test
 
   def test_basic_context
     user = User.create(name: 'Paul')
-    packed_user = ContextPacker.new(basic: 'foo').pack(user)
+    packed_user = ContextPacker.pack(user, basic: 'foo')
     assert_equal 'foo', packed_user[:basic_context]
   end
 
   def test_with_context
     user = User.create(name: 'Paul')
-    packed_user = ContextPacker.new(with_context: 'bar').pack(user)
+    packed_user = ContextPacker.pack(user, with_context: 'bar')
     assert_equal 'bar', packed_user[:with_context]
   end
 
   def test_context_passed_to_subpackers
     user = User.create(name: 'Paul')
     Post.create(author: user)
-    packed_user = ContextPacker.new(inherited: 'qux').pack(user)
+    packed_user = ContextPacker.pack(user, inherited: 'qux')
     assert_equal 'qux', packed_user[:posts][0][:inherited_context]
   end
 
@@ -733,10 +727,10 @@ class Sequel::PackerTest < Minitest::Test
     user = User.create(name: 'Paul')
     2.times {Post.create(author: user)}
 
-    packed_user = EagerWithContextPacker.new(filter: true).pack(user)
+    packed_user = EagerWithContextPacker.pack(user, filter: true)
     assert_equal 1, packed_user[:posts].length
 
-    packed_user = EagerWithContextPacker.new(filter: false).pack(user.refresh)
+    packed_user = EagerWithContextPacker.pack(user.refresh, filter: false)
     assert_equal 2, packed_user[:posts].length
   end
 
@@ -754,11 +748,11 @@ class Sequel::PackerTest < Minitest::Test
     2.times {Post.create(author: user)}
     post = Post.first
 
-    packed_post = SubpackerUsesEagerContextPacker.new(filter: true).pack(post)
+    packed_post = SubpackerUsesEagerContextPacker.pack(post, filter: true)
     assert_equal 1, packed_post[:author][:posts].length
 
     post.refresh
-    packed_post = SubpackerUsesEagerContextPacker.new(filter: false).pack(post)
+    packed_post = SubpackerUsesEagerContextPacker.pack(post, filter: false)
     assert_equal 2, packed_post[:author][:posts].length
   end
 
@@ -772,7 +766,7 @@ class Sequel::PackerTest < Minitest::Test
 
   def test_subclass_inherits_fields
     user = User.create(name: 'Paul')
-    packed_user = BasicSubclassPacker.new.pack(user)
+    packed_user = BasicSubclassPacker.pack(user)
     assert_equal user.id, packed_user[:id]
     assert_equal 'Paul', packed_user[:name]
   end

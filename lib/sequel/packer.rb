@@ -173,6 +173,21 @@ module Sequel
       @class_with_contexts << block
     end
 
+    # Pack the given data with the specified traits and additional context.
+    # Context is automatically passed down to any subpackers.
+    #
+    # Data can be provided as a Sequel::Dataset, an array of Sequel::Models, a
+    # single Sequel::Model, or nil. Even when passing models that have already
+    # been materialized, eager loading will be used to efficiently fetch
+    # associations.
+    #
+    # Returns an array of packed hashes, or a single packed hash if a single
+    # model was passed in. Returns nil if nil was passed in.
+    def self.pack(data, *traits, **context)
+      return nil if !data
+      new(*traits, **context).pack(data)
+    end
+
     # Initialize a Packer instance with the given traits and additional context.
     # This Packer can then pack multiple datasets or models via the pack method.
     def initialize(*traits, **context)
