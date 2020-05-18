@@ -1,3 +1,11 @@
+### 0.5.0 (2020-05-17)
+
+* Add `**context` argument to `#pack` method, exposed as `@context` in blocks
+  passed to `field` and `trait`.
+* Add `::with_context(&block)`, for accessing `@context` to use in additional
+  DSL calls, or modify data fetching.
+* Update README some re-organization and table of contents.
+
 ### 0.4.0 (2020-05-17)
 
 * **_BREAKING CHANGE:_** `#pack_models` and `#pack_model` have been changed to
