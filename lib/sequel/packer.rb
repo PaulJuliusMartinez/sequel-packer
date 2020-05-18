@@ -130,8 +130,11 @@ module Sequel
 
       @subpackers = nil
 
-      # If there aren't any traits, we can just re-use the class variables.
-      if traits.empty?
+      # If there aren't any trait or with_context blocks, we can just re-use the
+      # class variables. (Technically with_context blocks don't require making
+      # copies, but having an ad-hoc copy-on-write setup for these variables
+      # makes the code ugly and is error-prone.
+      if class_with_contexts.empty? && traits.empty?
         @instance_fields = class_fields
         @instance_packers = class_packers
         @instance_eager_hash = class_eager_hash
@@ -148,8 +151,9 @@ module Sequel
       end
 
       # Evaluate trait blocks, which might add new fields to @instance_fields,
-      # new packers to @instance_packers, and/or new associations to
-      # @instance_eager_hash.
+      # new packers to @instance_packers, new associations to
+      # @instance_eager_hash, and/or new precomputations to
+      # @instance_precomputations.
       traits.each do |trait|
         trait_block = class_traits[trait]
         if !trait_block
