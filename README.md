@@ -40,6 +40,11 @@ ORM](https://github.com/jeremyevans/sequel) offering the following features:
     - [`self.precompute(&block)`](#selfprecomputeblock)
   - [Context](#context)
     - [`self.with_context(&block)`](#selfwith_contextblock)
+- [Potential Future Functionality](#potential-future-functionality)
+  - [Automatically Generated Type Declarations](#automatically-generated-type-declarations)
+  - [Lifecycle Hooks](#lifecycle-hooks)
+  - [Less Data Fetching](#less-data-fetching)
+  - [Other Enhancements](#other-enhancements)
 - [Contributing](#contributing)
   - [Development](#development)
   - [Releases](#releases)
@@ -782,6 +787,68 @@ UserPacker.pack(User.dataset, comment_traits: [:author])
 UserPacker.pack(User.dataset, comment_traits: [:num_likes])
 => [{comments: [{id: 7, likes: 53}, ...]}]
 ```
+
+## Potential Future Functionality
+
+The 1.0.0 version of the Packer library is flexible to support many use cases.
+That said, of course there are ways to improve it! There are three main
+improvements I can imagine adding:
+
+### Automatically Generated Type Declarations
+
+It would be fairly easy to add generate type definitions by adding arguments to
+`field`. Packers could produce [TypeScript
+interface](https://www.typescriptlang.org/docs/handbook/interfaces.html)
+declarations, and adding a simple build step to a CI pipeline could enforce type
+safety across the frontend and backend. Or they could produce
+[OpenAPI](http://spec.openapis.org/oas/v3.0.3) specifications, which could then
+be used to automatically generate clients using something like
+[Swagger](https://swagger.io/).
+
+### Lifecycle Hooks
+
+It should be fairly easy to extend the Packer library using standard Ruby
+features like subclassing, mixins, via `include`, or even monkey-patching. It
+may be beneficial to have explicit hooks for common operations however, like
+`before_fetch`, or `around_pack`. It's more likely that these hooks are needed
+for logging and tracing capabilities, than for actual functionality, so I'd
+like to see some real-world usage before committing to a specific style of
+integration.
+
+### Less Data Fetching
+
+Sequel by default fetches every column in a table, but a Packer knows (roughly)
+what data is going to be used so it could only select the columns neede for
+actual serialization, and limit how much data is actually fetched from the
+database. I haven't done any benchmarking on this, so I'm not sure how much of
+a benefit could be gained by this, but it would be interesting!
+
+This could work roughly as follows:
+
+* Start by fetching all columns that appear in simple `field(:column_name)`
+  declarations
+* Add any columns need to fetch nested associations, or to re-asscociate fetched
+  records with their "parent" models, using the `left_key` and `right_key`
+  fields of the `AssociationReflections`
+* Add a `column(*columns)` DSL method to explicitly fetch additional columns
+
+### Other Enhancements
+
+Here are some other potential enhancements, though these are less fleshed out.
+
+* Support not including a key in a hash if the associated value is nil, to
+  reduce size of outputted data.
+* Support different casing of the outputted hashes, i.e., `snake_case` vs.
+  `camelCase`.
+* Explicitly support different output formats, rather than just plain Ruby
+  hashes, such as [Protocol
+  Buffers](https://developers.google.com/protocol-buffers) or [Cap'n
+  Proto](https://capnproto.org/).
+* When using nested `precompute` blocks, the Packer has to flatten the
+  associations of a model, which may be expensive, but has not been benchmarked.
+  These flattened arrays already exist internally in Sequel when the eager
+  loading occurs, but those aren't exposed. The code in Sequel could be
+  re-implemented as part of the library to avoid re-constructing those arrays.
 
 ## Contributing
 
