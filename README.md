@@ -876,7 +876,7 @@ commits and tags, and push the `.gem` file to
 [Karthik Viswanathan](https://github.com/karthikv) designed the original API
 of the Packer library while at [Affinity](https://www.affinity.co/). This
 library is a ground up rewrite which defines a very similar API, but shares no
-no code with the original implementation.
+code with the original implementation.
 
 ## License
 
