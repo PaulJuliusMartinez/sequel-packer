@@ -1,3 +1,8 @@
+### 1.0.0 (2020-05-18)
+
+* Version 1.0.0 release! No changes since 0.5.0 except some small changes to the
+  README.
+
 ### 0.5.0 (2020-05-17)
 
 * Add `**context` argument to `#pack` method, exposed as `@context` in blocks
