@@ -222,7 +222,7 @@ module Sequel
 
       # Create all the subpackers, and merge in their eager hashes.
       @instance_packers.each do |association, (subpacker, traits)|
-        association_packer = subpacker.new(*traits, @context)
+        association_packer = subpacker.new(*traits, **@context)
 
         @subpackers[association] = association_packer
 
