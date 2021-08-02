@@ -1,3 +1,8 @@
+### 1.0.1 (2021-08-02)
+
+* Update internal method call to remove "Using the last argument as
+  keyword parameters is deprecated" warning.
+
 ### 1.0.0 (2020-05-18)
 
 * Version 1.0.0 release! No changes since 0.5.0 except some small changes to the
