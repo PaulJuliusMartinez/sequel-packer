@@ -1,3 +1,8 @@
+### 1.0.2 (2023-05-03)
+
+* Remove validation on Symbol.to_proc to work with Ruby 3.0.0 since the internals of 
+  proc arity has been updated.
+
 ### 1.0.1 (2021-08-02)
 
 * Update internal method call to remove "Using the last argument as
