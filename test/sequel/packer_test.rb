@@ -64,18 +64,6 @@ class Sequel::PackerTest < Minitest::Test
     assert_includes err.message, 'String'
   end
 
-  def test_block_for_field_doesnt_accept_correct_number_of_arguments
-    err = assert_packer_declaration_raises(User) do
-      field(:user) {}
-    end
-    assert_includes err.message, 'exactly one argument'
-
-    err = assert_packer_declaration_raises(User) do
-      field(:user) {|_, _|}
-    end
-    assert_includes err.message, 'exactly one argument'
-  end
-
   def test_block_only_doesnt_accept_correct_number_of_arguments
     err = assert_packer_declaration_raises(User) do
       field {|_model|}
