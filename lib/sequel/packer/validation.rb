@@ -39,6 +39,17 @@ module Sequel
                 '...}).',
             )
           end
+
+          arity = block.arity
+
+          if !field_name && arity != 2
+            raise(
+              FieldArgumentError,
+              'When passing an arbitrary block to Sequel::Packer::field, the ' +
+                'block must accept exactly two arguments: the model and the ' +
+                'partially packed hash.',
+            )
+          end
         else
           # In this part of the if, block is not defined
 
