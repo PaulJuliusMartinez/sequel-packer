@@ -1,4 +1,4 @@
-### `master`
+### 1.0.2 (2023-05-11)
 
 * Update validation of the arity of the blocks passed to `field` to account
   for the change in the arity of procs created by `&:sym` in Ruby 3. The updated
