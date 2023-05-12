@@ -1,3 +1,9 @@
+### `master`
+
+* Update validation of the arity of the blocks passed to `field` to account
+  for the change in the arity of procs created by `&:sym` in Ruby 3. The updated
+  validation should support both Ruby 2 and Ruby 3 versions.
+
 ### 1.0.1 (2021-08-02)
 
 * Update internal method call to remove "Using the last argument as

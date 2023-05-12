@@ -1,5 +1,13 @@
 require 'sequel'
 
+# Before Ruby 3, the arity of the proc created by `&:sym` was -1.
+# In Ruby 3, this was changed to -2 to reflect that the proc requires
+# the receiver the method should be called on.
+#
+# See: https://bugs.ruby-lang.org/issues/16260
+# And: https://stackoverflow.com/a/70100210
+SYM_TO_PROC_ARITY = RUBY_VERSION < '3' ? -1 : -2
+
 module Sequel
   class Packer
     module Validation
@@ -42,8 +50,13 @@ module Sequel
 
           arity = block.arity
 
-          # When using Symbol.to_proc (field(:foo, &:calculate_foo)), the block has arity -1.
-          if field_name && arity != 1 && arity != -1
+          # If passing a literal block, as in `field(:foo) {|model| ... }`, the block
+          # will have arity 1 (1 required argument).
+          #
+          # When using Symbol.to_proc via `field(:foo, &:calculate_foo)`, the arity of
+          # the block depends which version Ruby is running. Before Ruby 3 the arity of
+          # the proc returned by `&:sym` had arity -1, but was updated to be -2 in Ruby 3.
+          if field_name && arity != 1 && arity != SYM_TO_PROC_ARITY
             raise(
               FieldArgumentError,
               "The block used to define :#{field_name} must accept exactly " +

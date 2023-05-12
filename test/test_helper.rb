@@ -9,6 +9,6 @@ require 'awesome_print'
 require 'pry'
 require 'pry-byebug'
 
-require './models'
+require_relative './models'
 
 require "minitest/autorun"
